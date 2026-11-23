@@ -59,7 +59,7 @@ function battleSkeleton(){
 }
 function renderZoneBar(){
   const S=G.S, Z=D.ZONES[S.zone], z=S.zones[S.zone];
-  const ready=bossReady(S.zone);
+  const ready=bossReady(S.zone) && !(S.battle&&S.battle.boss) && !S.pendingBoss;
   const prog = !z.boss ? `Boss: ${Math.min(z.wins,Z.wins)}/${Z.wins} wins` : `Boss beaten ✓ · rematch ${Math.min(z.sinceBoss,25)}/25`;
   setHTML($('#zoneBar'), `<div class="zname"><b>${Z.name}</b><small>Lv ${Z.lv} · ${prog}</small>${bar(z.boss?z.sinceBoss:z.wins, z.boss?25:Z.wins,'thin gold')}</div>
     <div class="zbtns">
