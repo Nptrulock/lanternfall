@@ -235,13 +235,16 @@ D.JOB_ORDER = ['knight','priest','mage','thief','ranger','paladin','spellblade',
 
 /* ---------------- materials ---------------- */
 D.MATS = {
-  stone:{name:'Stone', icon:'🪨', desc:'Building block for every village upgrade.'},
+  stone:{name:'Stone', icon:'🪨', desc:'Building block for every village upgrade.', sell:1},
+  quartz:{name:'Quartz', icon:'🔹', desc:'A pretty crystal from the mine. Sell it for gold.', sell:4},
+  silver:{name:'Silver Ore', icon:'🪙', desc:'Valuable ore from the mine. Sell it for gold.', sell:10},
+  nugget:{name:'Gold Nugget', icon:'🟡', desc:'A lucky find deep in the mine. Sell it for gold.', sell:25},
   herb:{name:'Wild Herb', icon:'🌿', desc:'Used in potions and food.'},
   gel:{name:'Slime Gel', icon:'🟢', desc:'Sticky. Potions and the first village upgrades.'},
   fur:{name:'Soft Fur', icon:'🧶', desc:'Warm pelts for cooking and the tavern.'},
   timber:{name:'Living Timber', icon:'🪵', desc:'Strong wood for buildings.'},
   silk:{name:'Spider Silk', icon:'🕸️', desc:'Fine thread for the library and gear.'},
-  copper:{name:'Copper Ore', icon:'🟠', desc:'Metal for the smithy.'},
+  copper:{name:'Copper Ore', icon:'🟠', desc:'Metal for the forge and smithy. Sells for a little gold.', sell:2},
   bone:{name:'Old Bone', icon:'🦴', desc:'Grim but useful: alchemy and the guild hall.'},
   lily:{name:'Bog Lily', icon:'🪷', desc:'Rare flower for strong potions.'},
   scale:{name:'Croc Scale', icon:'🐊', desc:'Tough hide for upgrades.'},
@@ -317,13 +320,13 @@ D.SLOT_NAMES = {weapon:'Weapon', armor:'Armor', acc:'Accessory', relic:'Relic'};
 /* ---------------- relics ----------------
    Very rare. Equip in the relic slot. Each houses one vital skill (250 AP to master). odds = 1 in N */
 D.RELICS = [
-  {id:'phoenix', name:'Phoenix Feather', icon:'🪶', skill:'rebirth', stats:{hp:4}, src:{boss:1, odds:12, any:3000}, desc:'Warm to the touch, it refuses to let its bearer fall.'},
-  {id:'crest', name:'Hero\'s Crest', icon:'🎖️', skill:'valor', stats:{str:2}, src:{boss:2, odds:12, any:3000}, desc:'Worn by the last hero of the realm.'},
-  {id:'midas', name:'Gilded Hand', icon:'🖐️', skill:'midas', stats:{agi:1}, src:{boss:3, odds:14, any:4000}, desc:'Everything it touches turns valuable.'},
-  {id:'chalice', name:'Saint\'s Chalice', icon:'🏆', skill:'miracle', stats:{mp:4,mag:1}, src:{boss:4, odds:14, any:4000}, desc:'Its water mends anything.'},
-  {id:'hourglass', name:'Hourglass of Ages', icon:'⏳', skill:'haste', stats:{agi:3}, src:{boss:5, odds:16, any:5000}, desc:'Time bends around whoever holds it.'},
-  {id:'moonstone', name:'Moonstone Tiara', icon:'👑', skill:'starfall', stats:{mag:3,mp:3}, src:{boss:6, odds:16, any:5000}, desc:'Pulls the stars down from the sky.'},
-  {id:'dragonheart', name:'Dragon Heart', icon:'❤️‍🔥', skill:'dragonblood', stats:{hp:5}, src:{boss:7, odds:18, any:6000}, desc:'Still beating, centuries later.'},
+  {id:'phoenix', name:'Phoenix Feather', icon:'🪶', skill:'rebirth', stats:{hp:4}, src:{boss:1, odds:29, any:9000}, desc:'Warm to the touch, it refuses to let its bearer fall.'},
+  {id:'crest', name:'Hero\'s Crest', icon:'🎖️', skill:'valor', stats:{str:2}, src:{boss:2, odds:29, any:9000}, desc:'Worn by the last hero of the realm.'},
+  {id:'midas', name:'Gilded Hand', icon:'🖐️', skill:'midas', stats:{agi:1}, src:{boss:3, odds:33, any:12000}, desc:'Everything it touches turns valuable.'},
+  {id:'chalice', name:'Saint\'s Chalice', icon:'🏆', skill:'miracle', stats:{mp:4,mag:1}, src:{boss:4, odds:33, any:12000}, desc:'Its water mends anything.'},
+  {id:'hourglass', name:'Hourglass of Ages', icon:'⏳', skill:'haste', stats:{agi:3}, src:{boss:5, odds:37, any:15000}, desc:'Time bends around whoever holds it.'},
+  {id:'moonstone', name:'Moonstone Tiara', icon:'👑', skill:'starfall', stats:{mag:3,mp:3}, src:{boss:6, odds:37, any:15000}, desc:'Pulls the stars down from the sky.'},
+  {id:'dragonheart', name:'Dragon Heart', icon:'❤️‍🔥', skill:'dragonblood', stats:{hp:5}, src:{boss:7, odds:41, any:18000}, desc:'Still beating, centuries later.'},
 ];
 D.RELIC = {}; D.RELICS.forEach(r => D.RELIC[r.id] = r);
 
@@ -421,11 +424,12 @@ D.PROFS = {
   cooking:{name:'Cooking', icon:'🍳', building:'tavern', desc:'Feeds the village. Builds the Tavern: food buffs.'},
   alchemy:{name:'Alchemy', icon:'⚗️', building:'apothecary', desc:'Brews remedies. Builds the Apothecary: potions and elixirs. Also gathers Wild Herbs.'},
   scholarship:{name:'Scholarship', icon:'📜', building:'library', desc:'Studies monsters. Builds the Library: bestiary knowledge = weaker enemies.'},
-  masonry:{name:'Masonry', icon:'🧱', building:'guild', desc:'Quarries stone (used in every upgrade). Builds the Guild Hall: job mentors.'},
+  masonry:{name:'Masonry', icon:'🧱', building:'guild', desc:'Quarries stone (used in every upgrade). Builds the Guild Hall (job mentors) and all five gear halls.'},
+  mining:{name:'Mining', icon:'⛏️', building:null, desc:'Digs slowly for 💎 Diamonds (gear pulls), plus Stone, Copper and gems you can sell.'},
 };
-D.PROF_ORDER = ['masonry','smithing','cooking','alchemy','scholarship'];
+D.PROF_ORDER = ['mining','masonry','smithing','cooking','alchemy','scholarship'];
 D.BUILDINGS = {
-  smithy:{name:'Smithy', icon:'⚒️', prof:'smithing', unlock:'Each level stocks a new tier of gear in the shop.'},
+  smithy:{name:'Smithy', icon:'⚒️', prof:'smithing', unlock:'Sells basic gear and buys your spares. Each level raises sell prices and unlocks fusing 3 copies of an item into the next rarity.'},
   tavern:{name:'Tavern', icon:'🍺', prof:'cooking', unlock:'Each level adds a new meal (party buff for a number of battles).'},
   apothecary:{name:'Apothecary', icon:'⚗️', prof:'alchemy', unlock:'Each level adds potions and elixirs.'},
   library:{name:'Library', icon:'📚', prof:'scholarship', unlock:'Each level lets the bestiary teach one more tier of enemy weaknesses.'},
@@ -452,7 +456,7 @@ D.BUILD_MATS = {
   library:   ['gel','silk','bone','scale','ecto','frost','dscale'],
   guild:     ['fur','timber','bone','scale','ember','ecto','dscale'],
 };
-D.WORKER_SLOTS = [{vl:0, n:1}, {vl:5, n:2}, {vl:14, n:3}, {vl:26, n:4}, {vl:36, n:5}]; // vl = village level (sum of building levels)
+D.WORKER_SLOTS = [{vl:0, n:2}, {vl:5, n:3}, {vl:14, n:4}, {vl:28, n:5}, {vl:45, n:6}]; // vl = village level (sum of building levels)
 
 D.FOODS = [
   {id:'stew', name:'Rabbit Stew', icon:'🍲', tav:1, gold:15, mats:{fur:2}, battles:20, buff:{str:1}, desc:'+1 STR'},
@@ -509,3 +513,53 @@ D.TUTORIAL = [
   {id:'boss', text:'Win enough battles in a zone and its boss appears on the 🗺️ Map. Beat it to unlock the next zone.', done:s=>s.zones[0].boss},
   {id:'job', text:'3 learned skills of one type (e.g. 3 Martial) unlock a Job. Jobs earn JP for a skill tree.', done:s=>s.chars.some(c=>c.job)},
 ];
+
+/* ---------------- gear gacha ----------------
+   Gear has a rarity. Five gear halls (built with Masonry) each hold gear for one skill type. Upgrading a hall improves its rates
+   and unlocks higher-tier gear (capped by how far you've travelled). Pulls cost 💎 Diamonds (Mining, bosses, rare battle finds). */
+D.RARITY = [
+  {name:'Common', short:'C', color:'#c9ced8', mult:1, ap:0, sell:1},
+  {name:'Uncommon', short:'U', color:'#6fe08a', mult:1.3, ap:0, sell:1.6},
+  {name:'Rare', short:'R', color:'#5fa8ff', mult:1.7, ap:1, sell:3},
+  {name:'Epic', short:'E', color:'#c77dff', mult:2.3, ap:2, sell:6},
+  {name:'Legendary', short:'L', color:'#ffb547', mult:3.2, ap:3, sell:12},
+];
+D.BANNERS = {
+  forge:{name:'Forge', icon:'🔥', type:'martial', jobs:'Knight · Paladin · Spellblade', desc:'Swords, axes and heavy armor for front-liners.', art:'⚔️'},
+  chapel:{name:'Chapel', icon:'⛪', type:'holy', jobs:'Priest · Paladin · Druid', desc:'Rods, robes and charms for healers.', art:'✨'},
+  arcanum:{name:'Arcanum', icon:'🔮', type:'arcane', jobs:'Mage · Spellblade · Warlock', desc:'Staves and robes for spellcasters.', art:'🪄'},
+  den:{name:'Thieves\' Den', icon:'🗝️', type:'shadow', jobs:'Thief · Assassin · Warlock', desc:'Daggers and cloaks for rogues.', art:'🗡️'},
+  lodge:{name:'Hunter\'s Lodge', icon:'🏹', type:'wild', jobs:'Ranger · Druid · Assassin', desc:'Bows and charms for rangers.', art:'🌿'},
+};
+D.BANNER_ORDER = ['forge','chapel','arcanum','den','lodge'];
+// rarity rates (%) by hall level 1..8: [Common, Uncommon, Rare, Epic, Legendary]
+D.BANNER_RATES = [null,
+  [72,22,5,0.9,0.1],[66,25,7,1.7,0.3],[60,27,10,2.5,0.5],[54,29,12.5,3.7,0.8],
+  [48,30,15.5,5.3,1.2],[42,31,18.5,6.9,1.6],[37,31,21,8.8,2.2],[32,31,23.5,10.5,3.0]];
+D.PULL_COST = 5; D.PULL10_COST = 45; D.PITY = 60; // Epic or better guaranteed by pull 60; every 10-pull has a Rare or better
+D.BANNER_COST = [null,
+  {prof:2, gold:60, stone:6},
+  {prof:4, gold:150, stone:12},
+  {prof:7, gold:400, stone:25},
+  {prof:11, gold:900, stone:40},
+  {prof:16, gold:1800, stone:60},
+  {prof:22, gold:3500, stone:85},
+  {prof:29, gold:6500, stone:115},
+  {prof:37, gold:11000, stone:150},
+];
+D.BANNER_MATS = {
+  forge:  ['copper','copper','copper','scale','ember','frost','dscale'],
+  chapel: ['herb','bone','bone','lily','ember','ecto','dscale'],
+  arcanum:['gel','silk','silk','lily','ember','frost','dscale'],
+  den:    ['fur','silk','bone','scale','ecto','ecto','dscale'],
+  lodge:  ['fur','timber','timber','scale','ember','frost','dscale'],
+};
+D.MINING = [ // what a Mining villager digs up: one every `every` seconds (faster with level), from minLv
+  {mat:'diamond', every:240, min:60, minLv:1},
+  {mat:'stone', every:30, min:10, minLv:1},
+  {mat:'quartz', every:45, min:15, minLv:1},
+  {mat:'copper', every:70, min:20, minLv:3},
+  {mat:'silver', every:120, min:40, minLv:6},
+  {mat:'nugget', every:300, min:90, minLv:12},
+];
+D.TUTORIAL.splice(3, 1, {id:'gacha', text:'Gear comes from the gear halls. Village → 💎 Gear Halls → pull at the Forge with Diamonds. Mining digs up more Diamonds.', done:s=>s.stats.pulls>=1});

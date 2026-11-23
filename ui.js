@@ -2,7 +2,7 @@
 /* Lanternfall — UI */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const UI = {tab:'battle', sel:0, partyView:'hero', village:'overview', codex:'bestiary', bag:'gear', lastPanel:0, pointer:false, battleKey:null, wide:false, modalOpen:false, version:'1.0'};
+const UI = {banner:'forge', tab:'battle', sel:0, partyView:'hero', village:'overview', codex:'bestiary', bag:'gear', lastPanel:0, pointer:false, battleKey:null, wide:false, modalOpen:false, version:'1.0'};
 window.__G = G; window.__D = D; window.__UI = UI;
 
 /* ---------------- helpers ---------------- */
@@ -13,6 +13,7 @@ const typeChip = t => `<span class="tchip" style="--tc:${D.TYPES[t].color}">${D.
 const matChip = (m, need) => { const have=G.S.mats[m]||0; const short=need!=null&&have<need;
   return `<button class="mchip ${short?'short':''}" data-a="matInfo" data-m="${m}" title="Where to get">${D.MATS[m].icon} ${D.MATS[m].name} <b>${need!=null?`${have}/${need}`:have}</b> <em>?</em></button>`; };
 const goldChip = need => `<span class="mchip ${G.S.gold<need?'short':''}">🪙 <b>${G.S.gold}/${need}</b></span>`;
+const rname = (u, it) => { it=it||defOf(u); const r=u.relic?4:(u.r||0); return `<span class="rn r${r}">${it.icon} ${esc(it.name)}${r&&!u.relic?` <small>${D.RARITY[r].name}</small>`:''}</span>`; };
 function skillName(id){ const s=D.SKILLS[id]; return `${D.TYPES[s.type].icon} ${s.name}`; }
 function guard(name, fn, el){ try{ return fn(); }catch(e){ console.error(name, e); if(el) el.innerHTML=`<div class="err">⚠️ Something went wrong drawing this page (${esc(name)}). The game is still running.<br><small>${esc(e.message)}</small><br><button data-a="tab" data-t="battle">Back to battle</button></div>`; return ''; } }
 
@@ -26,7 +27,7 @@ function closeModal(){ $('#modal').className='hidden'; $('#modal').innerHTML='';
 /* ---------------- header / hint / tabs ---------------- */
 function renderTop(){
   const S=G.S;
-  $('#res').innerHTML = S.started ? `<span title="Gold">🪙 ${S.gold.toLocaleString()}</span><span title="Village level">🏘️ ${villageLevel()}</span><span title="Potions">🧪 ${S.pots.potion||0}</span>` : '';
+  $('#res').innerHTML = S.started ? `<span title="Gold">🪙 ${S.gold.toLocaleString()}</span><span title="Diamonds (gear pulls)">💎 ${S.diamonds}</span><span title="Village level">🏘️ ${villageLevel()}</span>` : '';
 }
 function renderHint(){
   const S=G.S; const el=$('#hint');
@@ -43,7 +44,7 @@ function renderTabs(){
     return `<button class="tab ${UI.tab===id?'on':''}" data-a="tab" data-t="${id}"><b>${ic}</b><span>${n}</span>${badge}</button>`; }).join('');
 }
 function partyAlerts(){ const S=G.S; return S.chars.some(c=>D.JOB_ORDER.some(j=>!c.job&&jobUnlocked(c,j)) || (c.job && D.JOBS[c.job].tree.some(n=>nodeAvailable(c,c.job,n).ok))) || S.inv.some(u=>u.relic && equippedBy(u.uid)<0); }
-function villageAlerts(){ const S=G.S; return workersUsed()<workerSlots() || D.BUILD_ORDER.some(b=>canBuild(b).ok); }
+function villageAlerts(){ const S=G.S; return workersUsed()<workerSlots() || D.BUILD_ORDER.some(b=>canBuild(b).ok) || D.BANNER_ORDER.some(b=>canBuildBanner(b).ok) || (S.diamonds>=D.PULL_COST && S.stats.pulls<1); }
 
 /* ---------------- battle column ---------------- */
 function battleSkeleton(){
@@ -169,7 +170,7 @@ function heroOverview(c,ci,d){
 function itemCard(u, ci, slot){
   if(!u) return `<div class="slot empty"><div class="sl">${D.SLOT_NAMES[slot]}</div><div class="muted">Empty</div><button class="btn sm" data-a="pickSlot" data-s="${slot}">Equip…</button></div>`;
   const it=defOf(u), c=G.S.chars[ci];
-  return `<div class="slot ${u.relic?'relic':''}"><div class="sl">${D.SLOT_NAMES[slot]}</div><div class="iname">${it.icon} ${esc(it.name)}</div><div class="muted small">${statLine(it.stats)}</div>
+  return `<div class="slot ${u.relic?'relic':''}"><div class="sl">${D.SLOT_NAMES[slot]}</div><div class="iname">${rname(u,it)}</div><div class="muted small">${statLine(it.stats)}${!u.relic&&u.r>=2?` · +${D.RARITY[u.r].ap} AP/win`:''}</div>
     ${it.skills.map(s=>`<div class="lrow"><span>${skillName(s)}</span>${c.learned[s]?'<span class="ok">✓ learned</span>':bar(c.ap[s]||0,D.SKILLS[s].ap,'ap thin',`${c.ap[s]||0}/${D.SKILLS[s].ap}`)}</div>`).join('')}
     <div class="row"><button class="btn sm" data-a="pickSlot" data-s="${slot}">Change</button><button class="btn sm ghost" data-a="unequip" data-s="${slot}">Remove</button></div></div>`;
 }
@@ -202,11 +203,12 @@ function heroRace(c){
 function panelBag(){
   const S=G.S; const v=UI.bag;
   let h=`<div class="chips sub">${[['gear','Gear'],['mats','Materials'],['pots','Potions']].map(([k,n])=>`<button class="chip ${v===k?'on':''}" data-a="bagv" data-v="${k}">${n}</button>`).join('')}</div>`;
-  if(v==='gear'){ const items=S.inv.slice().sort((a,b)=>(defOf(b).tier||9)-(defOf(a).tier||9));
+  if(v==='gear'){ const items=S.inv.slice().sort((a,b)=>((b.relic?9:b.r||0)-(a.relic?9:a.r||0))||((defOf(b).tier||9)-(defOf(a).tier||9)));
     const mastered=S.inv.filter(u=>equippedBy(u.uid)<0&&isMastered(u));
     h+=`<div class="card"><div class="row between"><h3>Gear (${items.length})</h3>${mastered.length?`<button class="btn sm" data-a="sellMastered">Sell ${mastered.length} mastered</button>`:''}</div><p class="muted small">“Mastered” = every hero already learned all its skills. Tap an item to see where it comes from.</p>
-      <div class="ilist">${items.map(u=>{ const it=defOf(u), w=equippedBy(u.uid); return `<div class="irow"><button class="lnk il" data-a="itemInfo" data-u="${u.uid}">${it.icon} ${esc(it.name)}</button><small class="muted">${statLine(it.stats)} · ${it.skills.map(s=>D.SKILLS[s].name).join(', ')}</small>${w>=0?`<small class="ok">worn by ${esc(S.chars[w].name)}</small>`:`<button class="btn sm ghost" data-a="sell" data-u="${u.uid}">Sell ${sellPrice(u)}g</button>`}</div>`; }).join('')}</div></div>`; }
-  if(v==='mats') h+=`<div class="card"><h3>Materials</h3><p class="muted small">Tap any material to see where to get it and what uses it.</p><div class="mgrid">${Object.keys(D.MATS).map(m=>matChip(m)).join('')}</div></div>`;
+      <div class="ilist">${items.map(u=>{ const it=defOf(u), w=equippedBy(u.uid); return `<div class="irow"><button class="lnk il" data-a="itemInfo" data-u="${u.uid}">${rname(u,it)}</button><small class="muted">${statLine(it.stats)} · ${it.skills.map(s=>D.SKILLS[s].name).join(', ')}</small>${w>=0?`<small class="ok">worn by ${esc(S.chars[w].name)}</small>`:`<button class="btn sm ghost" data-a="sell" data-u="${u.uid}">Sell ${sellPrice(u)}g</button>`}</div>`; }).join('')}</div></div>`; }
+  if(v==='mats') h+=`<div class="card"><h3>Materials</h3><p class="muted small">Tap any material to see where to get it and what uses it.</p><div class="mgrid">${Object.keys(D.MATS).map(m=>matChip(m)).join('')}</div>
+    ${(()=>{ const g=['quartz','silver','nugget'].reduce((a,m)=>a+(S.mats[m]||0)*D.MATS[m].sell,0); return `<div class="row"><button class="btn sm ${g?'go':''}" data-a="sellGems" ${g?'':'disabled'}>Sell mined gems (🔹🪙🟡) for ${g} gold</button></div>`; })()}</div>`;
   if(v==='pots') h+=`<div class="card"><h3>Potions</h3>${D.POTIONS.filter(p=>!p.elixir).map(p=>`<div class="irow"><span>${p.icon} ${p.name} ×${S.pots[p.id]||0}</span><small class="muted">${esc(p.desc)}</small></div>`).join('')}<p class="muted small">Buy more at the Apothecary (Village). Turn auto-use on/off in ⚙️ Settings.</p></div>`;
   return h;
 }
@@ -216,10 +218,11 @@ function buildingArt(b){ const L=G.S.buildings[b]; const B=D.BUILDINGS[b]; const
   return `<div class="bld t${tier}" data-a="vview" data-v="${b==='library'?'library':b}"><div class="roof"></div><div class="body"><span>${L?B.icon:'🪧'}</span></div><div class="bname">${B.name}</div><div class="stars">${L?'★'.repeat(L):'plot'}</div></div>`; }
 function panelVillage(){
   const S=G.S; const v=UI.village;
-  const subs=[['overview','🏘️ Overview'],['smithy','⚒️ Smithy'],['tavern','🍺 Tavern'],['apothecary','⚗️ Apothecary'],['guild','🏛️ Guild Hall'],['library','📚 Library']];
-  let h=`<div class="village-scene">${D.BUILD_ORDER.map(buildingArt).join('')}</div>
+  const subs=[['overview','🏘️ Overview'],['gacha','💎 Gear Halls'],['smithy','⚒️ Smithy'],['tavern','🍺 Tavern'],['apothecary','⚗️ Apothecary'],['guild','🏛️ Guild Hall'],['library','📚 Library']];
+  let h=`<div class="village-scene">${D.BUILD_ORDER.map(buildingArt).join('')}</div><div class="village-scene halls">${D.BANNER_ORDER.map(hallArt).join('')}</div>
     <div class="chips sub">${subs.map(([k,n])=>`<button class="chip ${v===k?'on':''}" data-a="vview" data-v="${k}">${n}</button>`).join('')}</div>`;
   if(v==='overview') h+=villageOverview();
+  else if(v==='gacha') h+=villageGacha();
   else if(v==='smithy') h+=villageSmithy();
   else if(v==='tavern') h+=villageTavern();
   else if(v==='apothecary') h+=villageApo();
@@ -246,15 +249,15 @@ function villageOverview(){
     ${D.BUILD_ORDER.map(buildCard).join('')}`;
 }
 function villageSmithy(){
-  const S=G.S; const L=S.buildings.smithy; const items=shopItems();
-  const next=D.ITEMS.filter(it=>it.shop===L+1);
-  return buildCard('smithy') + `<div class="card"><h3>⚒️ Buy gear <small>(−${Math.min(40,S.profs.smithing.lv)}% from Smithing)</small></h3><p class="muted small">Gear teaches skills. Look for skills nobody has learned yet.</p>
+  const S=G.S; const L=S.buildings.smithy; const items=shopItems(); const fu=fusable(); const lim=fuseLimit();
+  return buildCard('smithy') + `<div class="card"><h3>⚒️ Basic gear <small>(Common · −${Math.min(40,S.profs.smithing.lv)}% from Smithing)</small></h3><p class="muted small">Starter gear only. Better gear comes from the 💎 Gear Halls.</p>
     <div class="shop">${items.map(it=>{ const p=buyPrice(it); const owned=S.inv.filter(u=>u.id===it.id).length; const newFor=S.chars.filter(c=>it.skills.some(s=>!c.learned[s])).length;
       return `<div class="sitem"><div class="iname">${it.icon} ${esc(it.name)} <small class="muted">${D.SLOT_NAMES[it.slot]}</small></div><div class="small">${statLine(it.stats)}</div>
         <div class="small">${it.skills.map(s=>`<span class="sk">${skillName(s)}</span>`).join(' ')}</div><div class="small muted">${newFor?`${newFor} hero${newFor>1?'es':''} can still learn from this`:'everyone has mastered these'}${owned?` · you own ${owned}`:''}</div>
-        <button class="btn sm ${S.gold>=p?'go':''}" data-a="buy" data-id="${it.id}" ${S.gold>=p?'':'disabled'}>Buy ${p}g</button></div>`; }).join('')}</div>
-    ${next.length?`<p class="muted small">Smithy Lv ${L+1} adds: ${next.map(i=>i.icon+' '+i.name).join(', ')}</p>`:''}</div>
-    <div class="card"><h3>💰 Sell</h3><p class="muted small">Sell unworn gear from 👥 Party → 🎒 Bag.</p><button class="btn sm" data-a="gobag">Open Bag</button></div>`;
+        <button class="btn sm ${S.gold>=p?'go':''}" data-a="buy" data-id="${it.id}" ${S.gold>=p?'':'disabled'}>Buy ${p}g</button></div>`; }).join('')}</div></div>
+    <div class="card"><h3>🔨 Fuse duplicates</h3><p class="muted small">3 unworn copies of the same item and rarity → 1 of the next rarity. Smithy Lv ${L} can fuse up to <b>${lim?D.RARITY[lim].name:'nothing yet (Lv 2 needed)'}</b>${lim<4?` · Lv ${(lim+1)*2} allows ${D.RARITY[lim+1].name}`:''}.</p>
+      ${fu.length?fu.map(f=>{ const it=D.ITEM[f.id]; const c=fuseCost(f.r); return `<div class="irow"><span>${rname({id:f.id,r:f.r})} ×${f.n}</span>${f.ok?`<button class="btn sm ${S.gold>=c?'go':''}" data-a="fuse" data-id="${f.id}" data-r="${f.r}" ${S.gold>=c?'':'disabled'}>Fuse → ${D.RARITY[f.r+1].name} (${c}g)</button>`:`<small class="short">needs Smithy Lv ${(f.r+1)*2}</small>`}</div>`; }).join(''):'<p class="muted small">No triples yet. Duplicate pulls pile up here.</p>'}</div>
+    <div class="card"><h3>💰 Sell</h3><p class="muted small">Sell unworn gear and mined gems from 👥 Party → 🎒 Bag. Smithy levels add +5% sell price each.</p><button class="btn sm" data-a="gobag">Open Bag</button></div>`;
 }
 function villageTavern(){
   const S=G.S, L=S.buildings.tavern;
@@ -284,6 +287,36 @@ function villageLibrary(){
     <button class="btn sm" data-a="gocodex" data-v="bestiary">Open the Bestiary</button></div>`;
 }
 
+function hallArt(b){ const L=G.S.banners[b], B=D.BANNERS[b]; const tier=L===0?0:L<3?1:L<6?2:3;
+  return `<div class="bld hall t${tier} ${UI.banner===b&&UI.village==='gacha'?'sel':''}" data-a="hall" data-b="${b}"><div class="roof"></div><div class="body"><span>${L?B.icon:'🪧'}</span></div><div class="bname">${B.name}</div><div class="stars">${L?'★'.repeat(L):'plot'}</div></div>`; }
+function ratesTable(b){ const L=G.S.banners[b]; const cur=L?bannerRates(b,L):null, nx=L<D.BMAX?bannerRates(b,L+1):null;
+  return `<table class="rates"><tr><th>Rarity</th><th>Now${L?` (Lv ${L})`:''}</th>${nx?`<th>Next (Lv ${L+1})</th>`:''}<th>Gear bonus</th></tr>${D.RARITY.map((r,i)=>`<tr><td><span class="rn r${i}">${r.name}</span></td><td>${cur?cur[i]+'%':'—'}</td>${nx?`<td class="${cur&&nx[i]>cur[i]?'ok':''}">${nx[i]}%</td>`:''}<td class="small">stats ×${r.mult}${r.ap?`, +${r.ap} AP/win`:''}</td></tr>`).join('')}</table>`; }
+function villageGacha(){
+  const S=G.S; const b=UI.banner||'forge', B=D.BANNERS[b], L=S.banners[b];
+  const chips=D.BANNER_ORDER.map(k=>`<button class="chip ${k===b?'on':''}" data-a="hall" data-b="${k}">${D.BANNERS[k].icon} ${D.BANNERS[k].name} <small>${S.banners[k]?'Lv '+S.banners[k]:'unbuilt'}</small></button>`).join('');
+  const c=bannerCost(b), a=canBuildBanner(b);
+  const up = c ? `<div class="need"><span class="small">${L?'Upgrade':'Build'} to Lv ${c.lv}:</span> <span class="mchip ${S.profs.masonry.lv<c.prof?'short':''}">🧱 Masonry Lv <b>${S.profs.masonry.lv}/${c.prof}</b></span>${costHtml(c)}</div><button class="btn ${a.ok?'go':''}" data-a="buildHall" data-b="${b}" ${a.ok?'':'disabled'}>${L?'Upgrade':'Build'} ${B.name}</button>${a.ok?'':`<small class="short"> Missing: ${esc(a.why)}</small>`}` : '<span class="ok">Fully upgraded!</span>';
+  let h=`<div class="chips sub">${chips}</div><div class="card banner" style="--tc:${D.TYPES[B.type].color}"><div class="bhead"><div class="bart">${B.art}</div><div><h3>${B.icon} ${B.name} <small>${L?`Lv ${L}/${D.BMAX}`:'not built yet'}</small></h3><div class="small">${esc(B.desc)} ${typeChip(B.type)} gear</div><div class="small muted">Good for: ${B.jobs}</div></div></div>`;
+  if(L){ const pool=bannerPool(b), cap=bannerTierCap(b); const pity=S.pity[b]||0;
+    h+=`<div class="pullbar"><div class="dia">💎 <b>${S.diamonds}</b><small>Diamonds</small></div>
+      <button class="btn pullb ${S.diamonds>=D.PULL_COST?'go':''}" data-a="pull" data-b="${b}" data-n="1" ${S.diamonds>=D.PULL_COST?'':'disabled'}>Pull ×1<small>💎 ${D.PULL_COST}</small></button>
+      <button class="btn pullb ${S.diamonds>=D.PULL10_COST?'go':''}" data-a="pull" data-b="${b}" data-n="10" ${S.diamonds>=D.PULL10_COST?'':'disabled'}>Pull ×10<small>💎 ${D.PULL10_COST} · Rare+ guaranteed</small></button></div>
+      <div class="small">Pity: ${bar(pity, D.PITY, 'thin gold', `${pity}/${D.PITY}`)} <span class="muted">An Epic or better is guaranteed within ${D.PITY} pulls on this hall (resets when you get one).</span></div>
+      <h4>Pull rates</h4>${ratesTable(b)}
+      <h4>Gear in this hall <small class="muted">(tier ${cap+1} and below; newest tier is 3× as likely)</small></h4>
+      <div class="pool">${pool.map(it=>{ const own=S.inv.filter(x=>x.id===it.id).length; return `<span class="pi ${it.tier===cap?'top':''}" title="${esc(it.skills.map(s=>D.SKILLS[s].name).join(', '))}">${it.icon} ${esc(it.name)} <small>${it.skills.map(s=>D.TYPES[D.SKILLS[s].type].icon).join('')}${own?` · own ${own}`:''}</small></span>`; }).join('')}</div>
+      ${bannerTierCap(b)<Math.min(L,maxZoneOpen()+1)-1||L-1>maxZoneOpen()?`<p class="small muted">Higher-tier gear appears as you open new zones on the Map.</p>`:`<p class="small muted">Upgrade the hall to unlock tier ${cap+2} gear (and better rates).</p>`}`;
+  } else h+=ratesTable(b);
+  h+=`<div class="upbox">${up}</div></div>
+    <div class="card"><h3>💎 Getting Diamonds</h3><ul class="small"><li>⛏️ <b>Mining</b> villagers dig them up slowly (Village → Overview). ${S.workers.mining?'<span class="ok">A villager is mining now.</span>':'<span class="short">Nobody is mining right now.</span>'}</li><li>👑 Bosses: 15 the first time, 3 on every rematch.</li><li>⚔️ Any battle: a rare lucky find (0.4%).</li></ul><p class="small muted">Mining also digs up Stone, Copper and gems (🔹🪙🟡) you can sell in 👥 Party → 🎒 Bag → Materials.</p></div>`;
+  return h;
+}
+function pullAnim(res, b){
+  const top=Math.max(...res.map(x=>x.r)); const B=D.BANNERS[b];
+  const cards=res.map((x,i)=>{ const it=D.ITEM[x.id]; const st=scaledStats(it.stats,x.r); return `<div class="pcard r${x.r}" style="animation-delay:${1.3+i*0.18}s"><div class="pci">${it.icon}</div><div class="pcn">${esc(it.name)}</div><div class="pcr">${D.RARITY[x.r].name}</div><div class="pcs">${statLine(st)}</div><div class="pck">${it.skills.map(s=>D.TYPES[D.SKILLS[s].type].icon+' '+D.SKILLS[s].name).join('<br>')}</div>${x.isNew?'<div class="pnew">NEW</div>':''}</div>`; }).join('');
+  modal(`<div class="pullfx r${top}"><div class="orb">${B.icon}</div><div class="rays"></div><div class="pcards n${res.length}">${cards}</div>
+    <div class="pfoot" style="animation-delay:${1.4+res.length*0.18}s"><button class="btn go" data-a="closeModal">Nice!</button>${G.S.diamonds>=(res.length===10?D.PULL10_COST:D.PULL_COST)?`<button class="btn" data-a="pull" data-b="${b}" data-n="${res.length}">Pull ×${res.length} again (💎 ${res.length===10?D.PULL10_COST:D.PULL_COST})</button>`:''}<button class="btn sm ghost" data-a="autoEquipClose">Equip new-skill gear</button></div></div>`, 'pullmodal');
+}
 /* ---------------- map panel ---------------- */
 function panelMap(){
   const S=G.S;
@@ -339,11 +372,12 @@ function codexSkills(){
   const S=G.S;
   return Object.keys(D.TYPES).filter(t=>t!=='job').map(t=>`<div class="card"><h3>${typeChip(t)}</h3>${Object.entries(D.SKILLS).filter(([id,s])=>s.type===t).map(([id,s])=>{ const who=S.chars.filter(c=>c.learned[id]).map(c=>c.name); const src=skillSources(id);
     return `<div class="skl"><b>${s.name}</b> <small class="muted">${s.kind}${s.mp?` · ${s.mp} MP`:''} · ${s.ap} AP</small><div class="small">${esc(s.desc)}</div>
-      <div class="small muted">From: ${src.map(x=>x.relicDef?`${x.icon} ${x.name} (relic)`:`${x.icon} ${x.name}${x.shop?` (Smithy Lv ${x.shop})`:' (drop)'}`).join(', ')}</div>${who.length?`<div class="small ok">Learned by ${who.map(esc).join(', ')}</div>`:''}</div>`; }).join('')}</div>`).join('');
+      <div class="small muted">Gear Halls: ${D.BANNER_ORDER.filter(b=>D.BANNERS[b].type===s.type).map(b=>D.BANNERS[b].icon+' '+D.BANNERS[b].name).join(', ')||'—'} · Gear: ${src.map(x=>x.relicDef?`${x.icon} ${x.name} (relic)`:`${x.icon} ${x.name}${x.shop===1?' (Smithy)':''}`).join(', ')}</div>${who.length?`<div class="small ok">Learned by ${who.map(esc).join(', ')}</div>`:''}</div>`; }).join('')}</div>`).join('');
 }
 function helpHtml(){
   return `<div class="card help"><h3>How Lanternfall plays</h3>
   <p><b>⚔️ Battles run themselves.</b> Your four heroes fight in turn order (by AGI). Numbers start tiny on purpose: 2 damage is a good hit, misses happen. Growth is slow and steady.</p>
+  <p><b>💎 Gear Halls.</b> Most gear comes from pulls at five halls: Forge (martial), Chapel (holy), Arcanum (arcane), Thieves' Den (shadow) and Hunter's Lodge (wild). Pulls cost Diamonds, which Mining villagers dig up slowly (bosses give some too). Upgrading a hall raises its Rare/Epic/Legendary odds; the rates table shows exactly what you'll get. Rarer gear has bigger stats and teaches its skills faster. Duplicates fuse at the Smithy.</p>
   <p><b>🧰 Gear teaches skills.</b> Every weapon, armor, accessory and relic carries skills. Each battle won adds AP; fill the bar and the hero keeps the skill forever. Swap gear around to learn everything.</p>
   <p><b>🎖️ Jobs.</b> Learn 3 skills of one type (Martial, Holy, Arcane, Shadow, Wild) to unlock that job: Knight, Priest, Mage, Thief or Ranger. Jobs earn JP for a skill tree. Advanced jobs (Paladin, Spellblade, Druid, Assassin, Warlock) need 4 + 3 skills of two types and a mentor at the Guild Hall.</p>
   <p><b>🧬 Races</b> unlock new traits at certain levels (shown in Party → Race).</p>
@@ -411,9 +445,9 @@ const A = {
   zone(d){ const S=G.S; setZone(+d.z); if(S.wiped) resume(); S.auto=true; if(!UI.wide) UI.tab='battle'; },
   tactic(d){ G.S.chars[UI.sel].tactic=d.t; },
   pickSlot(d){ const ci=UI.sel, c=G.S.chars[ci], slot=d.s; const S=G.S;
-    const list=S.inv.filter(u=>defOf(u).slot===slot).sort((a,b)=>(defOf(b).tier||0)-(defOf(a).tier||0));
+    const list=S.inv.filter(u=>defOf(u).slot===slot).sort((a,b)=>((defOf(b).tier||0)-(defOf(a).tier||0))||((b.r||0)-(a.r||0)));
     modal(`<h2>${D.SLOT_NAMES[slot]} for ${esc(c.name)}</h2>${list.length?`<div class="ilist">${list.map(u=>{ const it=defOf(u), w=equippedBy(u.uid); const nw=it.skills.filter(s=>!c.learned[s]);
-      return `<button class="pick ${c.equip[slot]===u.uid?'on':''}" data-a="equip" data-u="${u.uid}"><b>${it.icon} ${esc(it.name)}</b> <small>${statLine(it.stats)}</small><div class="small">${it.skills.map(s=>`<span class="${c.learned[s]?'ok':'sk'}">${skillName(s)}${c.learned[s]?' ✓':` ${c.ap[s]||0}/${D.SKILLS[s].ap}`}</span>`).join(' ')}</div>${w>=0?`<small class="muted">worn by ${esc(S.chars[w].name)}${w!==ci?' (will swap)':''}</small>`:''}${nw.length?`<small class="new">${nw.length} new skill${nw.length>1?'s':''} to learn</small>`:''}</button>`; }).join('')}</div>`:`<p class="muted">You have no ${D.SLOT_NAMES[slot].toLowerCase()} in your bag. ${slot==='relic'?'Relics drop very rarely from bosses (see Codex → Relics).':'Buy one at the Smithy or find one in battle.'}</p>`}`); },
+      return `<button class="pick ${c.equip[slot]===u.uid?'on':''}" data-a="equip" data-u="${u.uid}"><b>${rname(u,it)}</b> <small>${statLine(it.stats)}</small><div class="small">${it.skills.map(s=>`<span class="${c.learned[s]?'ok':'sk'}">${skillName(s)}${c.learned[s]?' ✓':` ${c.ap[s]||0}/${D.SKILLS[s].ap}`}</span>`).join(' ')}</div>${w>=0?`<small class="muted">worn by ${esc(S.chars[w].name)}${w!==ci?' (will swap)':''}</small>`:''}${nw.length?`<small class="new">${nw.length} new skill${nw.length>1?'s':''} to learn</small>`:''}</button>`; }).join('')}</div>`:`<p class="muted">You have no ${D.SLOT_NAMES[slot].toLowerCase()} in your bag. ${slot==='relic'?'Relics drop very rarely from bosses (see Codex → Relics).':'Pull for gear at a Gear Hall (Village → 💎 Gear Halls), buy basics at the Smithy, or find some in battle.'}</p>`}`); },
   equip(d){ equip(UI.sel, +d.u); closeModal(); },
   unequip(d){ unequip(UI.sel, d.s); },
   setJob(d){ setJob(UI.sel, d.j||null); },
@@ -422,6 +456,12 @@ const A = {
   worker(d){ if(!toggleWorker(d.p)) G.toast('No free villagers. Raise the village level to get more.'); },
   build(d){ build(d.b); },
   buy(d){ if(buyItem(d.id)) G.toast(`Bought ${D.ITEM[d.id].icon} ${D.ITEM[d.id].name}. Equip it in Party → Gear.`,'good'); },
+  hall(d){ UI.banner=d.b; UI.village='gacha'; if(UI.tab!=='village') UI.tab='village'; },
+  buildHall(d){ buildBanner(d.b); },
+  pull(d){ const r=pull(d.b, +d.n); if(!r){ G.toast('Not enough 💎 Diamonds. Put a villager on Mining.'); return; } save(); pullAnim(r, d.b); },
+  autoEquipClose(){ closeModal(); A.autoEquip(); },
+  fuse(d){ const nu=fuse(d.id, +d.r); if(nu) G.toast(`⚒️ Fused into ${D.RARITY[nu.r].name} ${D.ITEM[d.id].name}!`,'good'); },
+  sellGems(){ const g=sellMats(); G.toast(`Sold gems for ${g} gold.`,'good'); },
   sell(d){ const g=sellItem(+d.u); if(g) G.toast(`Sold for ${g} gold.`); },
   autoEquip(){ const n=autoEquipLearn(); G.toast(n?`Equipped ${n} item${n>1?'s':''} with new skills.`:'No spare gear with new skills. Visit the Smithy or keep fighting for drops.'); },
   sellMastered(){ const r=bulkSellMastered(); G.toast(`Sold ${r.n} mastered items for ${r.g} gold.`,'good'); },
@@ -430,7 +470,7 @@ const A = {
   matInfo(d){ const m=d.m, M=D.MATS[m]; const src=matSources(m);
     modal(`<h2>${M.icon} ${M.name}</h2><p>You have <b>${G.S.mats[m]||0}</b>.</p><p class="muted">${esc(M.desc)}</p><h3>Where to get it</h3><ul>${src.map(s=>`<li>${esc(s.text)}${s.p!=null?` — ${Math.round(s.p*100)}% per kill`:''}${s.zi!=null&&!zoneUnlocked(s.zi)?' <span class="short">(zone locked)</span>':s.zi!=null&&G.S.zone!==s.zi?` <button class="btn sm" data-a="zone" data-z="${s.zi}">Go there</button>`:''}</li>`).join('')}</ul><h3>Used for</h3><p>${matUses(m).join(' · ')||'—'}</p>`); },
   itemInfo(d){ const u=invItem(+d.u); if(!u) return; const it=defOf(u); const src=u.relic?[{text:`${D.ZONES[it.src.boss].boss.name} (1 in ${it.src.odds})`}]:itemSources(it.id);
-    modal(`<h2>${it.icon} ${esc(it.name)}</h2><p>${D.SLOT_NAMES[it.slot]} · ${statLine(it.stats)}</p><h3>Skills</h3>${it.skills.map(s=>`<p><b>${skillName(s)}</b> (${D.SKILLS[s].ap} AP): ${esc(D.SKILLS[s].desc)}<br><small class="muted">Learned by: ${G.S.chars.filter(c=>c.learned[s]).map(c=>esc(c.name)).join(', ')||'nobody yet'}</small></p>`).join('')}<h3>Where it comes from</h3><ul>${src.map(s=>`<li>${esc(s.text)}${s.p!=null?` — ${(s.p*100).toFixed(1)}% per kill`:''}</li>`).join('')}</ul>`); },
+    modal(`<h2>${rname(u,it)}</h2><p>${D.SLOT_NAMES[it.slot]} · ${statLine(it.stats)}${!u.relic&&u.r?` · ${D.RARITY[u.r].name}: stats ×${D.RARITY[u.r].mult}${D.RARITY[u.r].ap?`, +${D.RARITY[u.r].ap} AP per win`:''}`:''}</p><h3>Skills</h3>${it.skills.map(s=>`<p><b>${skillName(s)}</b> (${D.SKILLS[s].ap} AP): ${esc(D.SKILLS[s].desc)}<br><small class="muted">Learned by: ${G.S.chars.filter(c=>c.learned[s]).map(c=>esc(c.name)).join(', ')||'nobody yet'}</small></p>`).join('')}<h3>Where it comes from</h3><ul>${src.map(s=>`<li>${esc(s.text)}${s.p!=null?` — ${(s.p*100).toFixed(1)}% per kill`:''}</li>`).join('')}</ul>`); },
   rename(d){ const c=G.S.chars[+d.i]; const n=prompt('New name', c.name); if(n&&n.trim()) c.name=n.trim().slice(0,12); },
   closeModal(){ closeModal(); },
   tutSkip(){ G.S.flags.tutDone=1; },
@@ -474,7 +514,7 @@ function welcomeBack(sum){
   if(!sum || sum.sec<60) return;
   const mats=Object.entries(sum.mats).map(([m,n])=>`${D.MATS[m].icon} ${n}`).join(' ');
   modal(`<h2>🌙 Welcome back!</h2><p class="muted">You were away ${fmtTime(sum.sec)}${sum.sec>=OFFLINE_CAP?' (8h max)':''}.</p>
-    <ul class="wb"><li>⚔️ ${sum.wins} battles won${sum.wiped?' — then the party fell and is resting at the village (press ▶ to continue)':''}</li><li>🪙 +${sum.gold} gold · ✨ +${sum.xp} XP each</li>
+    <ul class="wb"><li>⚔️ ${sum.wins} battles won${sum.wiped?' — then the party fell and is resting at the village (press ▶ to continue)':''}</li><li>🪙 +${sum.gold} gold · ✨ +${sum.xp} XP each</li>${sum.diamonds?`<li>💎 +${sum.diamonds} Diamonds</li>`:''}
     ${sum.levels?`<li>⬆️ ${sum.levels} level-ups</li>`:''}${sum.learned.length?`<li>🎉 Learned: ${sum.learned.map(esc).join(', ')}</li>`:''}${sum.items.length?`<li>🎁 Found: ${sum.items.map(esc).join(', ')}</li>`:''}
     ${sum.profUps?`<li>🏘️ ${sum.profUps} profession level-ups</li>`:''}${mats?`<li>🧱 Materials: ${mats}</li>`:''}</ul><button class="btn go" data-a="closeModal">Continue</button>`);
 }

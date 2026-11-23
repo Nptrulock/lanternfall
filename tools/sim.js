@@ -12,14 +12,14 @@ const hits={}; const _log=F.log; F.log=(m,c)=>{ const x=/(attacks|strikes)!.* ta
 function manage(){
   const S=G.S;
   for(const b of D.BUILD_ORDER) F.build(b);
-  const slots=F.workerSlots(); const order=['masonry','smithing','alchemy','cooking','scholarship']; S.workers={}; order.slice(0,slots).forEach(p=>S.workers[p]=true);
+  const slots=F.workerSlots(); const order=['mining','masonry','smithing','alchemy','cooking','scholarship']; for(const b of D.BANNER_ORDER) F.buildBanner(b); let k=0; while(S.diamonds>=5){ const bs=D.BANNER_ORDER.filter(b=>S.banners[b]); F.pull(bs[(k++ + S.stats.pulls)%bs.length],1); } for(const u of [...S.inv]) if(F.equippedBy(u.uid)<0 && F.isMastered(u)) F.sellItem(u.uid); F.sellMats(); S.workers={}; order.slice(0,slots).forEach(p=>S.workers[p]=true);
   for(const it of F.shopItems()) if(!S.inv.some(u=>u.id===it.id) && S.gold>F.buyPrice(it)+20) F.buyItem(it.id);
   if(!S.food){ const f=[...D.FOODS].reverse().find(f=>f.tav<=S.buildings.tavern && F.canAfford(f.gold,f.mats)); if(f) F.buyFood(f.id); }
   if((S.pots.potion||0)<6) F.buyPotion('potion',4);
   S.chars.forEach((c,ci)=>{ for(const slot of ['weapon','armor','acc']){
     const cand=S.inv.filter(u=>!u.relic&&D.ITEM[u.id].slot===slot&&(F.equippedBy(u.uid)<0||c.equip[slot]===u.uid));
     if(!cand.length) continue; const maxT=Math.max(...cand.map(u=>D.ITEM[u.id].tier));
-    const score=u=>{const it=D.ITEM[u.id];const un=it.skills.filter(s=>!c.learned[s]).length;return it.tier*10+(un?(it.tier>=maxT-1?15:0):0)+Object.values(it.stats).reduce((a,b)=>a+b,0)};
+    const score=u=>{const it=F.defOf(u);const un=it.skills.filter(s=>!c.learned[s]).length;return it.tier*10+(un?(it.tier>=maxT-1?15:0):0)+Object.values(it.stats).reduce((a,b)=>a+b,0)};
     cand.sort((a,b)=>score(b)-score(a)); F.equip(ci,cand[0].uid); }
     const rel=S.inv.find(u=>u.relic&&F.equippedBy(u.uid)<0); if(rel&&!c.equip.relic) F.equip(ci,rel.uid);
     if(!c.job){ const j=D.JOB_ORDER.find(j=>F.jobUnlocked(c,j)); if(j) F.setJob(ci,j); }
@@ -37,7 +37,7 @@ while(t<HOURS*3600){
 }
   if(S.rest>0){ t+=6; F.finishRest(); } t+=1.1; battles++;
   F.tickProfs(0.6*g+7.1);
-  if(S.zones[S.zone].boss && S.zone+1<D.ZONES.length && farm<=0 && !S.zones[S.zone+1].wins){ out.push(`${(t/3600).toFixed(2)}h beat ${D.ZONES[S.zone].boss.name} b=${battles} lv ${S.chars.map(c=>c.lv)} g ${S.gold} jobs ${S.chars.map(c=>c.job)} learned ${S.chars.map(c=>Object.keys(c.learned).length)} B ${Object.values(S.buildings)} P ${D.PROF_ORDER.map(p=>S.profs[p].lv)}`); F.setZone(S.zone+1); }
+  if(S.zones[S.zone].boss && S.zone+1<D.ZONES.length && farm<=0 && !S.zones[S.zone+1].wins){ out.push(`${(t/3600).toFixed(2)}h beat ${D.ZONES[S.zone].boss.name} b=${battles} lv ${S.chars.map(c=>c.lv)} g ${S.gold} jobs ${S.chars.map(c=>c.job)} learned ${S.chars.map(c=>Object.keys(c.learned).length)} pulls ${S.stats.pulls} halls ${Object.values(S.banners)} B ${Object.values(S.buildings)} P ${D.PROF_ORDER.map(p=>S.profs[p].lv)}`); F.setZone(S.zone+1); }
 }
 console.log(JSON.stringify(G.S.mats), F.canBuild("smithy"), F.canBuild("guild"));
 console.log(out.join('\n'));
