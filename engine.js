@@ -498,6 +498,18 @@ function equip(ci, uid){ const S=G.S, c=S.chars[ci], u=invItem(uid); if(!u) retu
   c.equip[slot]=uid; fixHpMp(c); return true; }
 function unequip(ci, slot){ const c=G.S.chars[ci]; c.equip[slot]=null; fixHpMp(c); }
 
+// put on gear that still has skills to learn (for any slot whose current gear is fully learned)
+function autoEquipLearn(){
+  const S=G.S; let n=0;
+  S.chars.forEach((c,ci)=>{ for(const slot of ['weapon','armor','acc']){
+    const cur=c.equip[slot]!=null?invItem(c.equip[slot]):null;
+    if(cur && defOf(cur).skills.some(s=>!c.learned[s])) continue;
+    const cand=S.inv.filter(u=>!u.relic && D.ITEM[u.id].slot===slot && equippedBy(u.uid)<0 && D.ITEM[u.id].skills.some(s=>!c.learned[s]))
+      .sort((a,b)=>D.ITEM[b.id].tier-D.ITEM[a.id].tier);
+    if(cand.length){ equip(ci, cand[0].uid); n++; }
+  } });
+  return n;
+}
 /* ---------------- party creation ---------------- */
 function createParty(list){ const S=G.S; S.chars=list.map(x=>newChar(x.name.trim().slice(0,12)||'Hero', x.race));
   const starter={martial:'stick', holy:'rod', arcane:'wand', shadow:'knife', wild:'sling'};

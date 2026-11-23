@@ -100,7 +100,7 @@ function learningOf(c){ // [{sid, ap, need}] for gear skills not yet learned
 function renderLearn(){
   const S=G.S;
   $('#learnStrip').innerHTML = `<div class="lshead">📘 Learning from gear <small>(+1 AP per win)</small></div>` + S.chars.map((c,i)=>{ const L=learningOf(c);
-    if(!L.length) return `<div class="lsrow"><b>${esc(c.name)}</b><span class="muted">nothing to learn — equip new gear</span></div>`;
+    if(!L.length) return `<div class="lsrow" data-a="openChar" data-i="${i}"><b>${esc(c.name)}</b><span class="muted warnl">all learned — equip new gear ›</span></div>`;
     const x=L[0]; return `<div class="lsrow" data-a="openChar" data-i="${i}"><b>${esc(c.name)}</b><span class="sk">${skillName(x.sid)}</span>${bar(x.ap,x.need,'thin ap',`${x.ap}/${x.need}`)}${L.length>1?`<small>+${L.length-1}</small>`:''}</div>`; }).join('');
 }
 function renderBuffs(){
@@ -160,7 +160,7 @@ function panelParty(){
 }
 function heroOverview(c,ci,d){
   const L=learningOf(c); const n=typeCounts(c);
-  return `<div class="card"><h3>📘 Learning now</h3>${L.length?L.map(x=>`<div class="lrow"><span>${skillName(x.sid)} <small class="muted">${D.SKILLS[x.sid].kind}</small></span>${bar(x.ap,x.need,'ap',`${x.ap}/${x.need} AP`)}</div>`).join(''):'<p class="muted">Nothing to learn from current gear. Equip gear with new skills (Gear & skills tab).</p>'}
+  return `<div class="card"><h3>📘 Learning now</h3>${L.length?L.map(x=>`<div class="lrow"><span>${skillName(x.sid)} <small class="muted">${D.SKILLS[x.sid].kind}</small></span>${bar(x.ap,x.need,'ap',`${x.ap}/${x.need} AP`)}</div>`).join(''):'<p class="muted">Nothing to learn from current gear. Equip gear with new skills.</p><div class="row"><button class="btn sm go" data-a="autoEquip">🔄 Swap in gear with new skills</button><button class="btn sm" data-a="vview" data-v="smithy">⚒️ Visit the Smithy</button></div>'}
     <p class="muted small">Every battle won gives +1 AP to each skill on the gear a hero is wearing (+3 for bosses). Fill the bar and the skill is learned forever, even after the gear comes off. While worn, gear skills can be used before they're learned.</p></div>
   <div class="card"><h3>🎖️ Path to a job</h3><div class="types">${Object.keys(D.TYPES).filter(t=>!['vital','job'].includes(t)).map(t=>{ const base=D.JOB_ORDER.find(j=>Object.keys(D.JOBS[j].req).length===1&&D.JOBS[j].req[t]); const need=D.JOBS[base].req[t];
     return `<div class="trow">${typeChip(t)} ${bar(Math.min(n[t]||0,need),need,'thin',`${n[t]||0}/${need}`)} <small>${D.JOBS[base].icon} ${D.JOBS[base].name}</small></div>`; }).join('')}</div>
@@ -176,7 +176,7 @@ function itemCard(u, ci, slot){
 function heroGear(c,ci){
   const ss=skillSet(c);
   const groups={}; for(const id in ss){ const s=D.SKILLS[id]; (groups[s.type]=groups[s.type]||[]).push(id); }
-  return `<div class="card"><h3>🧰 Equipment</h3><div class="slots">${D.SLOTS.map(s=>itemCard(c.equip[s]!=null?invItem(c.equip[s]):null, ci, s)).join('')}</div></div>
+  return `<div class="card"><div class="row between"><h3>🧰 Equipment</h3><button class="btn sm" data-a="autoEquip" title="Every hero puts on bag gear with skills they haven't learned">🔄 Swap in new-skill gear</button></div><div class="slots">${D.SLOTS.map(s=>itemCard(c.equip[s]!=null?invItem(c.equip[s]):null, ci, s)).join('')}</div></div>
   <div class="card"><h3>📗 Skills available</h3>${Object.keys(groups).length?Object.entries(groups).map(([t,ids])=>`<div class="sgroup">${typeChip(t)}<div>${ids.map(id=>{const s=D.SKILLS[id];return `<div class="skl"><b>${s.name}</b> <small class="muted">${s.kind}${s.mp?` · ${s.mp} MP`:''} · ${ss[id]==='learned'?'learned':ss[id]==='job'?'job skill':'from gear'}</small><div class="small">${esc(s.desc)}</div></div>`}).join('')}</div></div>`).join(''):'<p class="muted">No skills yet.</p>'}
   <p class="muted small">Passive skills work automatically. Actives are used by the auto-battle AI when they're the best move.</p></div>`;
 }
@@ -423,6 +423,7 @@ const A = {
   build(d){ build(d.b); },
   buy(d){ if(buyItem(d.id)) G.toast(`Bought ${D.ITEM[d.id].icon} ${D.ITEM[d.id].name}. Equip it in Party → Gear.`,'good'); },
   sell(d){ const g=sellItem(+d.u); if(g) G.toast(`Sold for ${g} gold.`); },
+  autoEquip(){ const n=autoEquipLearn(); G.toast(n?`Equipped ${n} item${n>1?'s':''} with new skills.`:'No spare gear with new skills. Visit the Smithy or keep fighting for drops.'); },
   sellMastered(){ const r=bulkSellMastered(); G.toast(`Sold ${r.n} mastered items for ${r.g} gold.`,'good'); },
   food(d){ if(buyFood(d.id)) G.toast(`${D.FOOD[d.id].icon} The party eats ${D.FOOD[d.id].name}!`,'good'); },
   pot(d){ const n=buyPotion(d.id, +d.n); if(n) G.toast(`${D.POTION[d.id].icon} ${D.POTION[d.id].elixir?'Elixir active!':'Bought '+n+' '+D.POTION[d.id].name}`,'good'); },

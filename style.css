@@ -178,3 +178,4 @@ textarea{width:100%;min-height:120px;background:#0007;color:var(--ink);border:1p
 body.started:not(.wide)[data-tab="battle"] #panel{display:none}
 @media(max-width:420px){#scene{height:190px}.enemy .spr{font-size:52px}.enemy.boss .spr{font-size:88px}.enemy{min-width:64px}.enemy .ehp{width:70px}#msgwin{font-size:13.5px;height:136px}.pwin{padding:5px 6px}.pwin .pn{font-size:13px}.pwin .ps b{font-size:15px}.pwin .ps small{display:none}.pwin .pl{font-size:11px}.logo span{display:none}.lsrow{grid-template-columns:54px auto 1fr auto}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.warnl{color:#ffcf7a!important}
