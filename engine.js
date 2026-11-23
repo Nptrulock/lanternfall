@@ -47,7 +47,7 @@ function migrate(s){
   s.chars.forEach(c=>{ for(const k of ['ap','learned','jobs']) c[k]=c[k]||{}; c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); if(!c.tactic)c.tactic='auto'; });
   return s;
 }
-function save(){ try{ G.S.last=Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); return true; }catch(e){ console.warn('save failed', e); return false; } }
+function save(){ if(G.noSave) return false; try{ G.S.last=Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); return true; }catch(e){ console.warn('save failed', e); return false; } }
 function load(){
   let raw=null; try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){}
   if(raw){ try{ G.S = migrate(JSON.parse(raw)); return true; }catch(e){ console.warn('bad save, starting fresh', e); try{localStorage.setItem(SAVE_KEY+'.broken', raw)}catch(_){} } }

@@ -537,7 +537,7 @@ window.addEventListener('pagehide', save);
 window.__debug = {
   battles(n){ const q=G.quiet; G.quiet=true; try{ for(let b=0;b<n && !G.S.wiped;b++){ let g=0; if(!G.S.battle) startBattle(false); while(G.S.battle && g++<400) step(); if(G.S.rest>0) finishRest(); } } finally{ G.quiet=q; } save(); renderAll(); },
   profs(sec){ tickProfs(sec); save(); renderAll(); },
-  away(sec){ G.S.last=Date.now()-sec*1000; save(); },
+  away(sec){ save(); G.S.last=Date.now()-sec*1000; localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); G.noSave=true; },
 };
 
 load();
