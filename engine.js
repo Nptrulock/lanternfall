@@ -231,7 +231,7 @@ function spawn(zi, boss){
   const cnt={};
   return list.map((e,i)=>{ const st=enemyStats(e,zi); const t=beastTier(e.id), red=D.BEAST_TIERS[t].red;
     const same=list.filter(x=>x.id===e.id).length>1; cnt[e.id]=(cnt[e.id]||0)+1;
-    return {id:e.id, name:e.name+(same?' '+'ABC'[cnt[e.id]-1]:''), icon:e.icon, weak:e.weak, boss:!!e.boss, role:e.role, zi,
+    return {id:e.id, name:e.name+(same?' '+'ABC'[cnt[e.id]-1]:''), icon:e.icon, hat:e.hat, weak:e.weak, boss:!!e.boss, role:e.role, zi,
       hp:st.hp, maxHp:st.hp, atk:Math.max(1,Math.round(st.atk*(1-red))), def:Math.round(st.def*(1-red)), agi:Math.max(1,Math.round(st.agi*(1-red))), mag:Math.round(st.mag*(1-red)),
       xp:st.xp, gold:st.gold, poison:null, stun:0, deb:{}, idx:i};
   });

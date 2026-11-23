@@ -269,6 +269,16 @@ D.ITEMS = [
   I('charm','Clover Charm','🍀','acc',0,{agi:1},['keen_eye'],15,1),
   I('ring_mp','Glass Ring','💍','acc',0,{mp:1},['mana_font'],16,null),
   I('gel_bangle','Gel Bangle','📿','acc',0,{hp:2},['herbal_lore'],0,null),
+  // tier 0 — gear-hall only
+  I('bsword','Bronze Shortsword','🗡️','weapon',0,{str:2},['power_strike','toughness'],20,null),
+  I('buckler','Wooden Buckler','🛡️','acc',0,{def:1},['iron_skin'],18,null),
+  I('beads','Prayer Beads','📿','acc',0,{mp:1},['heal','blessing'],20,null),
+  I('vestment','Linen Vestment','🥼','armor',0,{def:1,mp:1},['holy_light'],18,null),
+  I('tome','Apprentice Tome','📕','acc',0,{mag:1},['frost'],18,null),
+  I('star_robe','Starry Robe','🧥','armor',0,{def:1,mag:1},['mana_font','fire'],20,null),
+  I('hood','Rogue Hood','🎭','armor',0,{def:1,agi:1},['evasion'],18,null),
+  I('lockpick','Lockpick Set','🪛','acc',0,{agi:1},['steal'],18,null),
+  I('snare','Snare Kit','🪤','acc',0,{agi:1},['entangle'],18,null),
   // tier 1 — Whisperwood
   I('spear','Ash Spear','🔱','weapon',1,{str:2},['cleave'],40,2),
   I('staff','Willow Staff','🦯','weapon',1,{mag:2},['frost'],42,2),
@@ -351,7 +361,7 @@ D.ZONES = [
       E('mushling','Mushling','🍄','tank','fire',[['herb',.3],['tunic',.02]]),
       E('bee','Buzzbee','🐝','quick','ice',[['herb',.2],['knife',.02]]),
     ],
-    boss:E('king_slime','King Slime','👑','tank','fire',[['gel',1],['gel_bangle',.3],['ring_mp',.3]], {boss:1})},
+    boss:E('king_slime','King Slime','💧','tank','fire',[['gel',1],['gel_bangle',.3],['ring_mp',.3]], {boss:1, hat:'👑'})},
   {id:'wood', name:'Whisperwood', lv:'3–7', bg:['#3f7d4a','#1f4027'], sky:['#5d8f6b','#a9d1a4'], wins:50,
     desc:'Old trees that murmur at night. Wolves hunt in packs here.',
     enemies:[

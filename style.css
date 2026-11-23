@@ -215,3 +215,4 @@ body.started:not(.wide)[data-tab="battle"] #panel{display:none}
 .pci{font-size:34px}.pcn{font-weight:800;font-size:13px}.pcr{color:var(--c);font:13px var(--dq)}.pcs{font-size:11px;color:var(--mut)}.pck{font-size:11px;margin-top:3px}
 .pnew{position:absolute;top:-8px;right:-6px;background:var(--gold);color:#222;font-size:10px;font-weight:800;border-radius:8px;padding:1px 6px}
 .pfoot{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px;opacity:0;animation:flip .3s forwards}
+.enemy .spr{position:relative}.enemy .hat{position:absolute;left:50%;top:-.38em;transform:translateX(-50%);font-size:.5em;font-style:normal}

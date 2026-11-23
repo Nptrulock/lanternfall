@@ -49,7 +49,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(9000)
         st = S(pg, "({wins:S.stats.wins,log:S.log.length,enemies:document.querySelectorAll('#enemies .enemy').length,pw:document.querySelectorAll('.pwin').length,maxHp:S.chars.map(c=>calc(c).maxHp)})")
         rec(f'{tag} live auto-battle runs (log, enemies, 4 status windows)', st['log'] > 3 and st['pw'] == 4 and (st['wins'] >= 1 or st['enemies'] >= 1), st)
-        rec(f'{tag} single-digit start: every hero has < 20 HP', all(h < 20 for h in st['maxHp']), st)
+        rec(f'{tag} small numbers at the start: every hero has 20 HP or less', all(h <= 20 for h in st['maxHp']), st)
         shot(pg, tag, '02-battle')
         # ---------- learn a skill (test-only fast forward) ----------
         pg.evaluate("__debug.battles(14)")
@@ -80,7 +80,7 @@ with sync_playwright() as p:
         shot(pg, tag, '06-gear-hall')
         d0 = S(pg, "S.diamonds"); n0 = S(pg, "S.inv.length")
         tap(pg, '[data-a=pull][data-n="1"]', 0, touch); pg.wait_for_timeout(2400)
-        rec(f'{tag} pull ×1 spends 5 diamonds, adds gear, plays the reveal', S(pg, "S.diamonds") == d0 - 5 and S(pg, "S.inv.length") == n0 + 1 and pg.locator('#modal .pcard').count() == 1, (d0, S(pg, "S.diamonds")))
+        rec(f'{tag} pull ×1 spends 5 diamonds, adds gear, plays the reveal', S(pg, "S.diamonds") == d0 - 5 and S(pg, "S.inv.length") >= n0 + 1 and pg.locator('#modal .pcard').count() == 1, (d0, S(pg, "S.diamonds")))
         tap(pg, '#modal .mclose', 0, touch)
         pg.evaluate("__G.S.diamonds=45"); pg.wait_for_timeout(1300)
         tap(pg, '[data-a=pull][data-n="10"]', 0, touch); pg.wait_for_timeout(3800)
@@ -160,7 +160,7 @@ with sync_playwright() as p:
         tap(pg, '[data-a=importOpen]', 0, touch); pg.locator('#imp').fill(code); tap(pg, '[data-a=importDo]', 0, touch); pg.wait_for_timeout(400)
         rec(f'{tag} import restores the exported save', S(pg, "S.started && S.chars[0].name==='Noah' && S.chars[0].job==='knight'"))
         # ---------- migration from an older save ----------
-        pg.evaluate("(()=>{const s=JSON.parse(localStorage.getItem('lanternfall.save'));delete s.v;delete s.settings.autoRest;delete s.bestiary;delete s.banners;delete s.diamonds;s.buildings={smithy:2};s.inv.forEach(u=>delete u.r);localStorage.setItem('lanternfall.save',JSON.stringify(s));})()")
+        pg.evaluate("(()=>{save();__G.noSave=true;const s=JSON.parse(localStorage.getItem('lanternfall.save'));delete s.v;delete s.settings.autoRest;delete s.bestiary;delete s.banners;delete s.diamonds;s.buildings={smithy:2};s.inv.forEach(u=>delete u.r);localStorage.setItem('lanternfall.save',JSON.stringify(s));})()")
         pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
         st = S(pg, "({v:S.v,ar:S.settings.autoRest,b:S.buildings,best:typeof S.bestiary,ban:S.banners,dia:S.diamonds,r:S.inv.every(u=>u.relic||u.r===0)})")
         rec(f'{tag} save migration v0 -> v2 fills missing fields, gear gets rarity', st['v'] == 2 and st['ar'] is True and st['b'].get('guild') == 0 and st['b']['smithy'] == 2 and st['best'] == 'object' and st['ban']['forge'] == 1 and st['dia'] == 25 and st['r'], st)

@@ -6,6 +6,7 @@ const UI = {banner:'forge', tab:'battle', sel:0, partyView:'hero', village:'over
 window.__G = G; window.__D = D; window.__UI = UI;
 
 /* ---------------- helpers ---------------- */
+const setHTML = (el, h) => { if(el && el._h!==h){ el._h=h; el.innerHTML=h; } };
 const pct = (a,b) => b>0 ? Math.max(0,Math.min(100,a/b*100)) : 0;
 const bar = (v,max,cls,label) => `<div class="bar ${cls||''}"><i style="width:${pct(v,max)}%"></i>${label!=null?`<span>${label}</span>`:''}</div>`;
 const statLine = st => Object.entries(st||{}).map(([k,v])=>`${v>0?'+':''}${v} ${D.STAT_NAMES[k]}`).join(', ');
@@ -60,12 +61,12 @@ function renderZoneBar(){
   const S=G.S, Z=D.ZONES[S.zone], z=S.zones[S.zone];
   const ready=bossReady(S.zone);
   const prog = !z.boss ? `Boss: ${Math.min(z.wins,Z.wins)}/${Z.wins} wins` : `Boss beaten ✓ · rematch ${Math.min(z.sinceBoss,25)}/25`;
-  $('#zoneBar').innerHTML = `<div class="zname"><b>${Z.name}</b><small>Lv ${Z.lv} · ${prog}</small>${bar(z.boss?z.sinceBoss:z.wins, z.boss?25:Z.wins,'thin gold')}</div>
+  setHTML($('#zoneBar'), `<div class="zname"><b>${Z.name}</b><small>Lv ${Z.lv} · ${prog}</small>${bar(z.boss?z.sinceBoss:z.wins, z.boss?25:Z.wins,'thin gold')}</div>
     <div class="zbtns">
       ${ready?`<button class="btn boss pulse" data-a="boss">👑 Fight boss</button>`:''}
       <button class="btn ${S.auto&&!S.wiped?'':'go'}" data-a="auto">${S.wiped?'▶ Revive & go':S.auto?'⏸ Pause':'▶ Auto-battle'}</button>
       <button class="btn sm" data-a="speed" title="Battle speed">${S.settings.speed}×</button>
-    </div>`;
+    </div>`);
 }
 function renderScene(){
   const S=G.S, B=S.battle, Z=D.ZONES[S.zone];
@@ -73,7 +74,7 @@ function renderScene(){
   const key = B ? B.key || (B.key = Math.random().toString(36).slice(2)) : 'none';
   const el=$('#enemies');
   if(UI.battleKey!==key){ UI.battleKey=key;
-    el.innerHTML = B ? B.enemies.map((e,i)=>`<div class="enemy ${e.boss?'boss':''}" id="en${i}"><div class="spr">${e.icon}</div><div class="ename">${esc(e.name)}</div><div class="ehp">${bar(e.hp,e.maxHp,'thin red')}</div></div>`).join('') : '';
+    el.innerHTML = B ? B.enemies.map((e,i)=>`<div class="enemy ${e.boss?'boss':''}" id="en${i}"><div class="spr">${e.hat?`<i class="hat">${e.hat}</i>`:''}${e.icon}</div><div class="ename">${esc(e.name)}</div><div class="ehp">${bar(e.hp,e.maxHp,'thin red')}</div></div>`).join('') : '';
   }
   if(B) B.enemies.forEach((e,i)=>{ const n=$('#en'+i); if(!n) return; n.classList.toggle('dead', e.hp<=0); const t=beastTier(e.id);
     n.querySelector('.ehp').innerHTML = bar(e.hp,e.maxHp,'thin red', t>=1?`${e.hp}/${e.maxHp}`:null) + (e.poison?'<span class="st">☠️</span>':'') + (e.stun?'<span class="st">💫</span>':'') + (t>=2?`<span class="wk">weak: ${D.ELEMENTS[e.weak].split(' ')[0]}</span>`:''); });
@@ -81,43 +82,43 @@ function renderScene(){
   if(S.wiped) msg=`<div class="wipe dq"><b>💀 The party has fallen.</b><p>Villagers carried everyone home. Everyone is healed. Nothing was lost; auto-battle is paused.</p><div class="row"><button class="btn go" data-a="auto">▶ Revive &amp; keep fighting here</button>${S.zone>0?`<button class="btn" data-a="zone" data-z="${S.zone-1}">◀ Go back to ${esc(D.ZONES[S.zone-1].name)}</button>`:''}</div><small>Tip: level up, learn skills, eat at the Tavern or buy gear, then try again.</small></div>`;
   else if(S.rest>0) msg=`<div class="rest">⛺ Resting at camp… ${Math.ceil(S.rest/S.settings.speed)}s</div>`;
   else if(!S.auto) msg=`<div class="rest">⏸ Paused — tap ▶ Auto-battle</div>`;
-  $('#sceneMsg').innerHTML=msg;
+  setHTML($('#sceneMsg'), msg);
 }
 function renderLog(){
   const L=G.S.log.slice(-7);
-  $('#msgwin').innerHTML = L.map(l=>`<div class="ln ${l.c}">${esc(l.m)}</div>`).join('') || '<div class="ln">…</div>';
+  setHTML($('#msgwin'), L.map(l=>`<div class="ln ${l.c}">${esc(l.m)}</div>`).join('') || '<div class="ln">…</div>');
 }
 function renderPWins(){
   const S=G.S;
-  $('#pwins').innerHTML = S.chars.map((c,i)=>{ const d=calc(c, S.battle&&S.battle.buffs); const low=c.hp>0&&c.hp<d.maxHp*.3; const job=c.job?D.JOBS[c.job].icon:'';
+  setHTML($('#pwins'), S.chars.map((c,i)=>{ const d=calc(c, S.battle&&S.battle.buffs); const low=c.hp>0&&c.hp<d.maxHp*.3; const job=c.job?D.JOBS[c.job].icon:'';
     return `<button class="pwin dq ${c.hp<=0?'ko':low?'low':''}" id="pw${i}" data-a="openChar" data-i="${i}">
       <div class="pn">${esc(c.name)}</div><div class="pl">${D.RACES[c.race].icon}${job} Lv ${c.lv}</div>
       <div class="ps"><span>HP</span><b>${c.hp}</b><small>/${d.maxHp}</small></div>${bar(c.hp,d.maxHp,'thin hpb')}
       <div class="ps"><span>MP</span><b>${c.mp}</b><small>/${d.maxMp}</small></div>${bar(c.mp,d.maxMp,'thin mpb')}
-    </button>`; }).join('');
+    </button>`; }).join(''));
 }
 function learningOf(c){ // [{sid, ap, need}] for gear skills not yet learned
   const out=[]; for(const u of charGear(c)) for(const sid of defOf(u).skills) if(!c.learned[sid] && !out.some(x=>x.sid===sid)) out.push({sid, ap:c.ap[sid]||0, need:D.SKILLS[sid].ap}); return out.sort((a,b)=>b.ap/b.need-a.ap/a.need); }
 function renderLearn(){
   const S=G.S;
-  $('#learnStrip').innerHTML = `<div class="lshead">📘 Learning from gear <small>(+1 AP per win)</small></div>` + S.chars.map((c,i)=>{ const L=learningOf(c);
+  setHTML($('#learnStrip'), `<div class="lshead">📘 Learning from gear <small>(+1 AP per win)</small></div>` + S.chars.map((c,i)=>{ const L=learningOf(c);
     if(!L.length) return `<div class="lsrow" data-a="openChar" data-i="${i}"><b>${esc(c.name)}</b><span class="muted warnl">all learned — equip new gear ›</span></div>`;
-    const x=L[0]; return `<div class="lsrow" data-a="openChar" data-i="${i}"><b>${esc(c.name)}</b><span class="sk">${skillName(x.sid)}</span>${bar(x.ap,x.need,'thin ap',`${x.ap}/${x.need}`)}${L.length>1?`<small>+${L.length-1}</small>`:''}</div>`; }).join('');
+    const x=L[0]; return `<div class="lsrow" data-a="openChar" data-i="${i}"><b>${esc(c.name)}</b><span class="sk">${skillName(x.sid)}</span>${bar(x.ap,x.need,'thin ap',`${x.ap}/${x.need}`)}${L.length>1?`<small>+${L.length-1}</small>`:''}</div>`; }).join(''));
 }
 function renderBuffs(){
   const S=G.S; const b=[];
   if(S.food) b.push(`${D.FOOD[S.food.id].icon} ${D.FOOD[S.food.id].name} (${D.FOOD[S.food.id].desc}) · ${S.food.left} battles`);
   if(S.elixir) b.push(`${D.POTION[S.elixir.id].icon} ${D.POTION[S.elixir.id].name} · ${S.elixir.left} battles`);
   const p=['potion','hi_potion','ether','phoenix_down'].filter(k=>S.pots[k]>0).map(k=>`${D.POTION[k].icon}${S.pots[k]}`).join(' ');
-  $('#buffs').innerHTML = (b.length?b.map(x=>`<span class="buff">${x}</span>`).join(''):`<span class="muted">No meal or elixir active — visit the Tavern / Apothecary.</span>`) + (p?`<span class="buff">Bag: ${p}</span>`:'');
+  setHTML($('#buffs'), (b.length?b.map(x=>`<span class="buff">${x}</span>`).join(''):`<span class="muted">No meal or elixir active — visit the Tavern / Apothecary.</span>`) + (p?`<span class="buff">Bag: ${p}</span>`:''));
 }
 function renderMini(){
   const S=G.S; const el=$('#mini');
   if(UI.wide || UI.tab==='battle' || !S.started){ el.innerHTML=''; el.style.display='none'; return; }
   el.style.display='';
   const last=S.log[S.log.length-1];
-  el.innerHTML = `<button class="minib" data-a="tab" data-t="battle"><span>⚔️ ${esc(D.ZONES[S.zone].name)} ${S.wiped?'· 💀 fallen':S.rest>0?'· ⛺ resting':!S.auto?'· ⏸':''}</span>
-    <span class="mhp">${S.chars.map(c=>{const d=calc(c);return `<i class="${c.hp<=0?'ko':''}" style="--p:${pct(c.hp,d.maxHp)}%"></i>`}).join('')}</span><small>${last?esc(last.m):''}</small></button>`;
+  setHTML(el, `<button class="minib" data-a="tab" data-t="battle"><span>⚔️ ${esc(D.ZONES[S.zone].name)} ${S.wiped?'· 💀 fallen':S.rest>0?'· ⛺ resting':!S.auto?'· ⏸':''}</span>
+    <span class="mhp">${S.chars.map(c=>{const d=calc(c);return `<i class="${c.hp<=0?'ko':''}" style="--p:${pct(c.hp,d.maxHp)}%"></i>`}).join('')}</span><small>${last?esc(last.m):''}</small></button>`);
 }
 function animate(){
   const ev=G.ev.splice(0); if(!ev.length) return;
@@ -526,7 +527,7 @@ function loop(){
   }catch(e){ console.error('tick', e); }
   if(now-lastSave>5000){ save(); lastSave=now; }
   // battle area redraws every frame-ish; panel every ~1.2s unless the user is touching it
-  if(G.S.started){ if(UI.wide||UI.tab==='battle'){ if(now-lastBattleDraw>150){ guard('battle', renderBattle, $('#battleCol')); lastBattleDraw=now; } } else { G.ev.length=0; guard('mini', renderMini); }
+  if(G.S.started){ if(UI.wide||UI.tab==='battle'){ if(now-lastBattleDraw>150 && !UI.pointer){ guard('battle', renderBattle, $('#battleCol')); lastBattleDraw=now; } } else { G.ev.length=0; guard('mini', renderMini); }
     guard('top', renderTop);
     if(now-UI.lastPanel>1200 && !UI.pointer && !UI.modalOpen && !(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))){ guard('tabs', renderTabs); guard('hint', renderHint); renderPanel(); } }
 }
