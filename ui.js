@@ -183,7 +183,7 @@ function heroGear(c,ci){
   <p class="muted small">Passive skills work automatically. Actives are used by the auto-battle AI when they're the best move.</p></div>`;
 }
 function heroJob(c,ci){
-  const S=G.S; let h='';
+  const S=G.S; let h='', tree='';
   h+=`<div class="card"><h3>🎖️ Jobs</h3><div class="jobs">${D.JOB_ORDER.map(j=>{ const J=D.JOBS[j], n=typeCounts(c), ok=jobUnlocked(c,j);
     const reqs=Object.entries(J.req).map(([t,k])=>`<span class="${(n[t]||0)>=k?'ok':'short'}">${D.TYPES[t].icon} ${n[t]||0}/${k} ${D.TYPES[t].name}</span>`).join(' ');
     const ment = J.mentor ? (()=>{ const m=D.MENTOR[J.mentor]; return `<span class="${S.buildings.guild>=m.gl?'ok':'short'}">🏛️ Guild Hall Lv ${S.buildings.guild}/${m.gl}</span>`; })() : '';
@@ -191,10 +191,10 @@ function heroJob(c,ci){
       ${c.job===j?'<span class="ok">Current job</span>':ok?`<button class="btn sm go" data-a="setJob" data-j="${j}">Become ${J.name}</button>`:''}</div>`; }).join('')}</div>
     ${c.job?`<button class="btn sm ghost" data-a="setJob" data-j="">Go jobless</button>`:''}<p class="muted small">Switching jobs is free. Each job keeps its own JP and learned nodes; only the current job's tree is active.</p></div>`;
   if(c.job){ const J=D.JOBS[c.job], jt=c.jobs[c.job];
-    h+=`<div class="card"><h3>${J.icon} ${J.name} skill tree <span class="jp">${jt.jp} JP</span></h3><p class="muted small">+1 JP per win (+3 boss)${mentorHere(c.job)?' · +1 from your mentor':''}.</p><div class="tree">${[1,2,3].map(t=>`<div class="tier"><div class="tl">Tier ${t}${t===3?' (needs mentor)':''}</div>${J.tree.filter(n=>n.tier===t).map(n=>{ const a=nodeAvailable(c,c.job,n), own=jt.nodes[n.id];
+    tree=`<div class="card"><h3>${J.icon} ${J.name} skill tree <span class="jp">${jt.jp} JP</span></h3><p class="muted small">+1 JP per win (+3 boss)${mentorHere(c.job)?' · +1 from your mentor':''}.</p><div class="tree">${[1,2,3].map(t=>`<div class="tier"><div class="tl">Tier ${t}${t===3?' (needs mentor)':''}</div>${J.tree.filter(n=>n.tier===t).map(n=>{ const a=nodeAvailable(c,c.job,n), own=jt.nodes[n.id];
       return `<div class="node ${own?'own':a.ok?'can':''}"><b>${n.name}</b><div class="small">${esc(n.desc)}${n.eff.grant?' — '+esc(D.SKILLS[n.eff.grant].desc):''}</div>${own?'<span class="ok">✓ Learned</span>':a.ok?`<button class="btn sm go" data-a="node" data-n="${n.id}">Learn (${n.cost} JP)</button>`:`<small class="short">${esc(a.why)}</small>`}</div>`; }).join('')}</div>`).join('')}</div>
       ${mentorHere(c.job)?`<button class="btn sm" data-a="lesson">🏛️ Mentor lesson: +5 JP for ${mentorLessonCost(c)} gold</button>`:''}</div>`; }
-  return h;
+  return tree + h;
 }
 function heroRace(c){
   const r=D.RACES[c.race];
