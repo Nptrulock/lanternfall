@@ -34,37 +34,89 @@ function newState(){
 }
 /* Save versions: v1/v2 were the first release. v3 (this redesign) is a fresh start: older saves are backed up, not converted. */
 function migrate(s){
+  if(!s || typeof s!=='object') throw new Error('The save is not readable data.');
   if(typeof s.v!=='number') s.v=0;
   if(s.v<3) throw Object.assign(new Error('old'), {oldSave:true});
+  if(s.v>SAVE_V) throw new Error('This save is from a newer version of Lanternfall.');
+  if(!Array.isArray(s.chars)) throw new Error('The save has no party.');
+  if(s.started && s.chars.length!==3) throw new Error('The party in the save is damaged.');
+  for(const c of s.chars) if(!c || !D.RACES[c.race] || typeof c.lv!=='number') throw new Error('A hero in the save is damaged.');
   const f = newState();
-  for(const k in f) if(s[k]===undefined) s[k]=f[k];
+  for(const k in f) if(s[k]===undefined||s[k]===null) s[k]=f[k];
   for(const k in f.settings) if(s.settings[k]===undefined) s.settings[k]=f.settings[k];
   for(const k in f.stats) if(s.stats[k]===undefined) s.stats[k]=f.stats[k];
   for(const p of D.PROF_ORDER) if(!s.profs[p]) s.profs[p]={lv:1,xp:0,acc:{}};
   for(const b of D.BUILD_ORDER) if(s.buildings[b]===undefined) s.buildings[b]=D.BUILD[b].start;
+  if(!Array.isArray(s.zones)) throw new Error('The zone list in the save is damaged.');
   while(s.zones.length<D.ZONES.length) s.zones.push({wins:0,boss:false,bossKills:0,sinceBoss:0});
+  if(!Array.isArray(s.inv)) throw new Error('The inventory in the save is damaged.');
   const nc=newChar('x','human');
   s.chars.forEach(c=>{ for(const k in nc) if(c[k]===undefined) c[k]=JSON.parse(JSON.stringify(nc[k])); c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); });
   return s;
 }
-function save(){ if(G.noSave) return false; try{ G.S.last=Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); return true; }catch(e){ console.warn('save failed', e); return false; } }
+/* ---------------- saving, backups & recovery ----------------
+   main save: SAVE_KEY. Rolling backups: .auto1 (newest) .. .auto3, rotated at most every BAK_EVERY of play,
+   plus .daily (first save of each calendar day). A save that fails to load is kept under .broken and is never overwritten by a new game. */
+const BAK_AUTO = [SAVE_KEY+'.auto1', SAVE_KEY+'.auto2', SAVE_KEY+'.auto3'];
+const BAK_DAILY = SAVE_KEY+'.daily', BAK_META = SAVE_KEY+'.bakmeta', BROKEN_KEY = SAVE_KEY+'.broken', PRERESET_KEY = SAVE_KEY+'.prereset', PRERESTORE_KEY = SAVE_KEY+'.prerestore';
+const BAK_EVERY = 10*60*1000;
+const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+const lsSet = (k,v) => { try{ localStorage.setItem(k,v); return true; }catch(e){ console.warn('storage write failed', k, e); return false; } };
+function bakMeta(){ try{ return JSON.parse(lsGet(BAK_META)||'{}')||{}; }catch(e){ return {}; } }
+function rollBackups(raw, force){
+  const m=bakMeta(), now=Date.now();
+  if(force || !m.auto || now-m.auto>=BAK_EVERY || !lsGet(BAK_AUTO[0])){
+    const t=m.autoAt||[];
+    for(let i=BAK_AUTO.length-1;i>0;i--){ const prev=lsGet(BAK_AUTO[i-1]); if(prev){ lsSet(BAK_AUTO[i], prev); t[i]=t[i-1]; } }
+    lsSet(BAK_AUTO[0], raw); t[0]=now; m.autoAt=t.slice(0,BAK_AUTO.length); m.auto=now; }
+  const day=new Date(now).toDateString();
+  if(m.day!==day || !lsGet(BAK_DAILY)){ lsSet(BAK_DAILY, raw); m.day=day; m.dailyAt=now; }
+  lsSet(BAK_META, JSON.stringify(m));
+}
+function save(force){
+  if(G.noSave || G.loadFailed || !G.S) return false;
+  G.S.last=Date.now(); const raw=JSON.stringify(G.S);
+  const ok=lsSet(SAVE_KEY, raw);
+  if(ok && G.S.started) rollBackups(raw, force===true);
+  return ok;
+}
+function saveSummary(s){ if(!s||!s.chars||!s.chars.length) return 'no party yet';
+  return `${s.chars.map(c=>`${c.name} Lv ${c.lv}`).join(', ')} · ${(s.stats&&s.stats.wins)||0} wins · ${fmtTime((s.stats&&s.stats.play)||0)} played`; }
+// every backup slot with whether it can actually be restored
+function listBackups(){ const m=bakMeta(); const out=[];
+  const add=(key,label,at)=>{ const raw=lsGet(key); if(!raw) return; let ok=false, sum='', err='';
+    try{ const s=migrate(JSON.parse(raw)); ok=!!s.started; sum=saveSummary(s); if(!ok) err='no party yet'; }catch(e){ err=e.oldSave?'from the first version':e.message; }
+    out.push({key,label,at:at||null,ok,sum,err}); };
+  BAK_AUTO.forEach((k,i)=>add(k, i===0?'Latest autosave backup':`Autosave backup ${i+1}`, (m.autoAt||[])[i]));
+  add(BAK_DAILY, 'Daily backup', m.dailyAt); add(PRERESET_KEY, 'Before the last hard reset', m.preresetAt); add(PRERESTORE_KEY, 'Before the last restore', m.prerestoreAt);
+  return out; }
+function restoreBackup(key){ const raw=lsGet(key); if(!raw) throw new Error('That backup is empty.');
+  const s=migrate(JSON.parse(raw)); if(!s.started) throw new Error('That backup has no party yet.');
+  if(!G.loadFailed && G.S && G.S.started){ lsSet(PRERESTORE_KEY, JSON.stringify(G.S)); const m=bakMeta(); m.prerestoreAt=Date.now(); lsSet(BAK_META, JSON.stringify(m)); }   // the game being replaced is kept
+  G.S=s; G.S.battle=null; G.loadFailed=null; dirty(); save(); return true; }
+function startFreshAfterFail(){ G.loadFailed=null; G.S=newState(); dirty(); }   // the damaged save stays under BROKEN_KEY
 function load(){
-  let raw=null; try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){}
-  G.newJourney=false;
+  const raw=lsGet(SAVE_KEY);
+  G.newJourney=false; G.loadFailed=null;
   if(raw){ try{ G.S = migrate(JSON.parse(raw)); dirty(); return true; }catch(e){
-      if(e.oldSave){ try{ localStorage.setItem(SAVE_KEY+'.v2backup', raw); localStorage.removeItem(SAVE_KEY); }catch(_){} G.newJourney=true; }
-      else { console.warn('bad save, starting fresh', e); try{localStorage.setItem(SAVE_KEY+'.broken', raw)}catch(_){} } } }
+      if(e.oldSave){ lsSet(SAVE_KEY+'.v2backup', raw); try{ localStorage.removeItem(SAVE_KEY); }catch(_){} G.newJourney=true; }
+      else { console.warn('save failed to load', e); lsSet(BROKEN_KEY, raw); lsSet(BROKEN_KEY+'.at', String(Date.now()));
+        G.loadFailed={reason:'broken', msg:e.message||String(e), raw}; } } }
+  else if(listBackups().some(b=>b.ok)) G.loadFailed={reason:'missing', msg:'The main save is missing, but a backup was found.', raw:null};
   G.S = newState(); dirty(); return false;
 }
 function exportSave(){ save(); return btoa(unescape(encodeURIComponent(JSON.stringify(G.S)))); }
+function encodeRaw(raw){ return btoa(unescape(encodeURIComponent(raw))); }
 function importSave(str){
   str=(str||'').trim(); let obj;
   try{ obj = JSON.parse(decodeURIComponent(escape(atob(str)))); }catch(e){ try{ obj=JSON.parse(str); }catch(e2){ throw new Error('That doesn\'t look like a Lanternfall save.'); } }
   if(!obj || !Array.isArray(obj.chars)) throw new Error('That doesn\'t look like a Lanternfall save.');
-  try{ G.S = migrate(obj); }catch(e){ if(e.oldSave) throw new Error('That save is from the first version of Lanternfall. v2 is a fresh start.'); throw e; }
-  G.S.battle=null; dirty(); save(); return true;
+  try{ obj = migrate(obj); }catch(e){ if(e.oldSave) throw new Error('That save is from the first version of Lanternfall. v2 is a fresh start.'); throw e; }
+  if(G.S && G.S.started) rollBackups(JSON.stringify(G.S), true);   // keep what was there before the import
+  G.S=obj; G.S.battle=null; G.loadFailed=null; dirty(); save(); return true;
 }
-function hardReset(){ try{localStorage.removeItem(SAVE_KEY)}catch(e){} G.S=newState(); dirty(); }
+function hardReset(){ const raw=lsGet(SAVE_KEY); if(raw){ lsSet(PRERESET_KEY, raw); const m=bakMeta(); m.preresetAt=Date.now(); lsSet(BAK_META, JSON.stringify(m)); }
+  try{localStorage.removeItem(SAVE_KEY)}catch(e){} G.S=newState(); dirty(); }
 
 function log(msg, cls){ const S=G.S; S.log.push({m:msg, c:cls||''}); if(S.log.length>60) S.log.splice(0, S.log.length-60); }
 function emit(e){ if(!G.quiet){ G.ev.push(e); if(G.ev.length>200) G.ev.splice(0,100); } }

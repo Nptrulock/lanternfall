@@ -181,9 +181,11 @@ with sync_playwright() as p:
         shot(pg, tag, '14-welcome-back')
         close_modal(pg, touch)
         # ---------- export / reset / import ----------
-        nav(pg, 'codex', touch); tap(pg, '[data-a=cview][data-v=settings]', 0, touch); tap(pg, '[data-a=exportSave]', 0, touch)
+        nav(pg, 'codex', touch); tap(pg, '#top [data-a=codexGo][data-k=save]', 0, touch); tap(pg, '[data-a=exportSave]', 0, touch)
         code = pg.locator('#exp').input_value(); close_modal(pg, touch)
-        tap(pg, '[data-a=resetAsk]', 0, touch); tap(pg, '[data-a=resetDo]', 0, touch); pg.wait_for_timeout(400)
+        tap(pg, '[data-a=resetAsk]', 0, touch); pg.locator('#resetTxt').fill('reset'); tap(pg, '[data-a=resetDo]', 0, touch)
+        rec(f'{tag} hard reset refuses anything but RESET', S(pg, "S.started") and pg.locator('#reseterr').inner_text() != '')
+        pg.locator('#resetTxt').fill('RESET'); tap(pg, '[data-a=resetDo]', 0, touch); pg.wait_for_timeout(400)
         rec(f'{tag} hard reset returns to party creation', not S(pg, "S.started") and pg.locator('.create').count() == 1)
         pg.evaluate(f"importSave({code!r})"); pg.evaluate("__debug.render()"); pg.wait_for_timeout(300)
         rec(f'{tag} import restores the exported save', S(pg, "S.started && S.chars[0].name==='Noah' && S.chars[0].locks.knight==='0.2'"))

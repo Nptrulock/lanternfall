@@ -69,7 +69,8 @@ function renderCreate(){
       <p class="small">${esc(D.RACES[x.race].desc)}</p>
       <div class="tr">${D.RACES[x.race].traits.map(t=>`<span class="chip" title="${esc(t.desc)}">Lv ${t.lv} · ${esc(t.name)}</span>`).join('')}</div></div></div>`).join('')}
     <button class="btn go big cgo" data-a="begin">Arrive in Lanternfall</button>
-    <p class="small center muted">Your save lives in this browser. Export it from Codex → Settings.</p></div>`;
+    <p class="small center muted">Your save lives in this browser. Copy your save code any time from 💾 Save.</p>
+    <p class="center"><button class="lnk dark" data-a="importOpen">Already playing elsewhere? Paste a save code</button></p></div>`;
 }
 
 /* ---------------- TOWN ---------------- */
@@ -347,9 +348,9 @@ function heroGear(c, ci){ const S=G.S;
         return `<div class="srow"><span class="grow">${rname(x)}<div class="small">${slot==='relic'?statLine(it.stats):compareFor(c, D.ITEM[x.id], x.r)}${nw?' · <span class="ok">'+nw+' new skill'+(nw>1?'s':'')+'</span>':''}</div></span><button class="btn sm go" data-a="equip" data-uid="${x.uid}">Equip</button></div>`; }).join('')}</div>`:''}</div>`; }).join(''); }
 
 /* ---------------- CODEX ---------------- */
-const CODEX=[['bestiary','🐾 Bestiary'],['relics','💠 Relics'],['mats','🧱 Materials'],['help','❓ Guide'],['settings','⚙️ Settings']];
+const CODEX=[['bestiary','🐾 Bestiary'],['relics','💠 Relics'],['mats','🧱 Materials'],['save','💾 Save'],['help','❓ Guide'],['settings','⚙️ Settings']];
 function viewCodex(){ const v=UI.codex; let h=`<div class="stabs">${CODEX.map(([k,n])=>`<button class="stab ${v===k?'on':''}" data-a="cview" data-v="${k}">${n}</button>`).join('')}</div>`;
-  h += v==='relics'?codexRelics() : v==='mats'?codexMats() : v==='help'?helpHtml() : v==='settings'?settingsHtml() : codexBestiary(); return h; }
+  h += v==='relics'?codexRelics() : v==='mats'?codexMats() : v==='help'?helpHtml() : v==='settings'?settingsHtml() : v==='save'?saveHtml() : codexBestiary(); return h; }
 function codexBestiary(){ const S=G.S; const L=S.buildings.library;
   return `<p class="small pdesc">Kills teach the Library about each foe. Tiers weaken that foe for good (Library Lv ${L} unlocks up to tier ${D.BEAST_TIERS.reduce((a,t,i)=>t.lib<=L?i:a,0)}). Rare ✨ Gilded variants appear 1 in ${Math.round(1/D.VARIANT_CHANCE)} fights. Complete a zone's collection for its relic.</p>` +
   D.ZONES.map((Z,zi)=>{ if(!zoneOpen(zi) && !S.zones[zi].wins) return `<div class="parch card dim"><h3>🔒 ${esc(Z.name)}</h3></div>`; const col=zoneCollection(zi);
@@ -376,7 +377,7 @@ function helpHtml(){ return `<div class="parch card help"><h3>How Lanternfall pl
   <p><b>📚 Bestiary.</b> Kill counts weaken foes (with the Library). Master every foe in a zone, beat its Gilded variants and the boss to earn that zone's relic.</p></div>`; }
 function settingsHtml(){ const S=G.S; return `<div class="parch card"><h3>⚙️ Settings</h3><label class="tg"><input type="checkbox" data-set="autoBoss" ${S.settings.autoBoss?'checked':''}> <span><b>Auto-challenge bosses</b><br><small class="muted">Fight a zone's boss as soon as it appears (off = you choose).</small></span></label>
   <button class="btn sm" data-a="tutReset">Show the guide again</button></div>
-  <div class="parch card"><h3>Save</h3><p class="small muted">Saves automatically on this device.</p><div class="row gap wrap"><button class="btn sm" data-a="exportSave">Export save</button><button class="btn sm" data-a="importOpen">Import save</button><button class="btn sm danger" data-a="resetAsk">Hard reset</button></div>
+  <div class="parch card"><h3>💾 Save</h3><p class="small muted">Save codes, backups and hard reset live on the Save page.</p><button class="btn sm" data-a="codexGo" data-k="save">Open 💾 Save</button>
   <p class="small muted">Lanternfall v${UI.version} · played ${fmtTime(S.stats.play)} · ${S.stats.wins} wins · ${S.stats.losses} falls · ${S.stats.departs} expeditions</p></div>`; }
 
 /* ---------------- pulls ---------------- */
@@ -385,6 +386,61 @@ function pullAnim(res, b){
   const cards=res.map((x,i)=>{ const it=D.ITEM[x.id]; const st=scaledStats(it.stats,x.r); return `<div class="pcard r${x.r}" style="animation-delay:${.9+i*.15}s"><div class="pci">${it.icon}</div><div class="pcn">${esc(it.name)}</div><div class="pcr">${D.RARITY[x.r].name}</div><div class="pcs">${statLine(st)}</div><div class="pck">${it.skills.map(s=>skillName(s)).join('<br>')}</div>${x.isNew?'<div class="pnew">NEW</div>':''}</div>`; }).join('');
   modal(`<div class="pullfx r${top}"><div class="orb">${B.icon}</div><div class="pcards n${res.length}">${cards}</div>
     <div class="pfoot" style="animation-delay:${1+res.length*.15}s"><button class="btn go" data-a="closeModal">Nice!</button><button class="btn sm" data-a="autoEquipClose">Equip new-skill gear</button></div></div>`, 'pullmodal'); }
+
+/* ---------------- save safety: codes, backups, Home Screen, persistent storage ---------------- */
+const DAY=864e5, A2HS_KEY='lanternfall.a2hs', A2HS_RESHOW=3*DAY, NUDGE_EVERY=3*DAY;
+G.persist={supported:!!(navigator.storage&&navigator.storage.persist), granted:null};
+function requestPersist(){ if(!G.persist.supported) return Promise.resolve(false);
+  return navigator.storage.persisted().then(p=>p||navigator.storage.persist()).then(r=>{ G.persist.granted=!!r; return !!r; }).catch(()=>false); }
+const envIOS=()=>{ const ua=navigator.userAgent||''; return /iPhone|iPad|iPod/.test(ua) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1); };
+// Safari on iOS defines navigator.standalone: false in a browser tab, true when opened from the Home Screen
+const envSafariTab=()=>envIOS() && navigator.standalone===false && !(window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+function a2hsState(){ try{ return JSON.parse(localStorage.getItem(A2HS_KEY)||'{}')||{}; }catch(e){ return {}; } }
+function a2hsSet(st){ try{ localStorage.setItem(A2HS_KEY, JSON.stringify(st)); }catch(e){} }
+// pure decision, unit-tested: {safariTab, now, st:{dismissedAt}} -> 'full' | 'gentle' | null
+function a2hsDecision(env){ if(!env.safariTab) return null; const st=env.st||{}; if(!st.dismissedAt) return 'full'; return env.now-st.dismissedAt>=A2HS_RESHOW ? 'gentle' : null; }
+function relTime(t){ if(!t) return 'never'; const d=Date.now()-t; return d<60e3?'just now':d<36e5?Math.floor(d/6e4)+' min ago':d<DAY?Math.floor(d/36e5)+' h ago':Math.floor(d/DAY)+' days ago'; }
+const SHARE_ICON='<svg class="shareic" viewBox="0 0 20 24" aria-label="Share"><path d="M10 2v13M5.5 6.5 10 2l4.5 4.5M6 10H3v12h14V10h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+function a2hsSteps(){ return `<ol class="a2steps"><li>Tap <b>Share</b> ${SHARE_ICON} in Safari's toolbar.</li><li>Scroll down and choose <b>Add to Home Screen</b>.</li><li>Open Lanternfall from its new 🏮 icon.</li></ol>`; }
+function renderA2HS(){ const el=$('#a2hs'); if(!el) return;
+  const mode = G.loadFailed ? null : (UI.a2hsForce || a2hsDecision({safariTab:envSafariTab(), now:Date.now(), st:a2hsState()}));
+  if(!mode || UI.a2hsHidden){ el.className='hidden'; setHTML(el,''); return; }
+  const started=G.S&&G.S.started;
+  el.className='parch a2hs '+mode;
+  if(mode==='gentle' && !UI.a2hsOpen) setHTML(el, `<div class="a2row"><img src="art/apple-touch-icon.png" alt=""><span>📲 Add Lanternfall to your Home Screen so Safari can't clear your save.</span><button class="btn sm" data-a="a2hsOpen">How?</button><button class="mclose" data-a="a2hsLater" aria-label="Dismiss">✕</button></div>`);
+  else setHTML(el, `<button class="mclose" data-a="a2hsLater" aria-label="Dismiss">✕</button><div class="a2row"><img src="art/apple-touch-icon.png" alt=""><div><h3>Keep your journey safe</h3>
+    <p class="small">Safari may erase a website's saved data after about 7 days without a visit. On your Home Screen, Lanternfall runs as its own app and keeps its save.</p></div></div>${a2hsSteps()}
+    ${started?`<p class="small"><b>Your save doesn't move by itself.</b> The Home Screen app has its own storage. Copy your save code first, then in the app choose <b>Paste a save code</b>.</p><div class="row gap"><button class="btn go" data-a="copyCode">📋 Copy save code</button><button class="btn" data-a="a2hsLater">Not now</button></div>`
+      :`<div class="row gap"><button class="btn" data-a="a2hsLater">Not now</button></div>`}`); }
+function nudgeDue(){ const S=G.S; if(!S||!S.started||G.loadFailed) return false; const f=S.flags||{};
+  const last=Math.max(f.lastCopy||0, f.nudgeSnooze||0, S.created||0); return S.stats.play>=1800 && Date.now()-last>=NUDGE_EVERY; }
+function renderNudge(){ const el=$('#nudge'); if(!el) return; if(!nudgeDue()){ el.className='hidden'; setHTML(el,''); return; }
+  const f=G.S.flags; el.className='parch nudge';
+  setHTML(el, `<span>💾 ${f.lastCopy?`It's been ${relTime(f.lastCopy).replace(' ago','')} since you copied your save code.`:"You haven't copied your save code yet."} Keep a copy somewhere safe.</span><div class="row gap"><button class="btn sm go" data-a="copyCode">📋 Copy code</button><button class="btn sm" data-a="nudgeLater">Later</button></div>`); }
+function copyText(t){ const fallback=()=>{ const ta=document.createElement('textarea'); ta.value=t; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;top:0;left:0;opacity:0'; document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0,t.length); let ok=false; try{ ok=document.execCommand('copy'); }catch(e){} ta.remove(); return ok; };
+  try{ if(navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t).then(()=>true, ()=>fallback()); }catch(e){}
+  return Promise.resolve(fallback()); }
+function codeModal(code, title, note){ modal(`<h2>${title}</h2><p class="small muted">${note}</p><textarea id="exp" readonly>${esc(code)}</textarea><div class="row gap"><button class="btn sm go" data-a="copyExp">📋 Copy</button></div>`);
+  setTimeout(()=>{ const t=$('#exp'); if(t){ t.focus(); t.select(); } },50); }
+function backupRows(onFail){ const list=listBackups(); if(!list.length) return '<p class="small muted">No backups yet. One is made every 10 minutes of play and once a day.</p>';
+  return list.map(b=>`<div class="srow bak ${b.ok?'':'dim'}"><span class="grow"><b>${esc(b.label)}</b> <small class="muted">${b.at?relTime(b.at):''}</small><div class="small">${esc(b.ok?b.sum:'Can\'t be restored: '+b.err)}</div></span>${b.ok?`<button class="btn sm ${onFail?'go':''}" data-a="${onFail?'restoreDo':'restoreAsk'}" data-k="${esc(b.key)}">Restore</button>`:''}</div>`).join(''); }
+function saveHtml(){ const S=G.S, f=S.flags||{}; const pst=G.persist; const ios=envIOS(), tab=envSafariTab(), standalone=navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+  return `<div class="parch card savecode"><h3>💾 Your save code</h3><p class="small">Your game is stored in this browser. A save code is a copy of it you can keep anywhere (Notes, a message to yourself) and paste back to restore your game, on this device or another.</p>
+    <button class="btn go big" data-a="copyCode">📋 Copy save code</button><p class="small muted">Last copied: ${relTime(f.lastCopy)}</p>
+    <div class="row gap wrap"><button class="btn sm" data-a="exportSave">Show the code</button><button class="btn sm" data-a="importOpen">Paste a save code</button></div></div>
+  <div class="parch card"><h3>🛡️ Protection</h3>
+    <div class="srow"><span class="grow"><b>Storage</b><div class="small">${!pst.supported?'This browser can’t mark storage as persistent. Keep your save code handy.':pst.granted?'<span class="ok">Persistent ✓</span> The browser has agreed not to clear it on its own.':'Not marked persistent yet. The browser decides; keep your save code handy.'}</div></span></div>
+    ${ios?`<div class="srow"><span class="grow"><b>Home Screen</b><div class="small">${standalone?'<span class="ok">Running from the Home Screen ✓</span>':tab?'In a Safari tab, Safari may clear the save after 7 days without a visit.':'Open Lanternfall in Safari to add it to your Home Screen.'}</div></span>${tab?'<button class="btn sm" data-a="a2hsShow">How to add</button>':''}</div>`:''}
+    <div class="srow"><span class="grow"><b>Backups</b><div class="small">The last 3 autosave backups (one every 10 minutes of play) plus one daily backup are kept in this browser.</div></span></div></div>
+  <div class="parch card"><h3>🗂️ Backups</h3>${backupRows(false)}</div>
+  <div class="parch card"><h3>Hard reset</h3><p class="small">Deletes this game and starts over. A copy is kept as a “Before the last hard reset” backup.</p><button class="btn sm danger" data-a="resetAsk">Hard reset…</button></div>`; }
+function renderLoadFailed(){ const L=G.loadFailed; const v=$('#view'); const broken=L.reason==='broken';
+  setHTML($('#res'),''); setHTML($('#nav'),''); $('#hint').style.display='none';
+  setHTML(v, `<div class="loadfail"><div class="parch card"><h1>⚠️ ${broken?'Your save couldn’t load':'We couldn’t find your save'}</h1>
+    <p>${broken?`Something in the saved game is damaged (<i>${esc(L.msg)}</i>). Nothing has been deleted: the damaged save is kept safely in this browser.`:'The main save is missing, but a backup was found in this browser.'}</p></div>
+    <div class="parch card"><h3>Restore a backup</h3>${backupRows(true)}</div>
+    <div class="parch card"><h3>Other options</h3><div class="row gap wrap">${broken?'<button class="btn" data-a="exportBroken">Export the damaged save</button>':''}<button class="btn" data-a="importOpen">Paste a save code</button></div>
+      <details class="small"><summary>Start a new game instead</summary><p>${broken?'The damaged save stays in this browser as a backup copy.':''} Your backups are kept too.</p><button class="btn sm danger" data-a="freshAfterFail">Start a new game</button></details></div></div>`); }
 
 /* ---------------- render ---------------- */
 const VIEWS={town:viewTown, map:viewMap, camp:viewCamp, party:viewParty, codex:viewCodex};
@@ -396,7 +452,9 @@ function renderView(force){
   const html=guard(UI.tab, ()=>VIEWS[UI.tab](), v); if(html!=null) setHTML(v, html);
   UI.lastPanel=Date.now(); }
 function renderAll(){
-  const S=G.S; document.body.classList.toggle('started', !!S.started);
+  const S=G.S; document.body.classList.toggle('started', !!S.started && !G.loadFailed);
+  guard('a2hs', renderA2HS); guard('nudge', renderNudge);
+  if(G.loadFailed){ renderLoadFailed(); return; }
   if(!S.started){ renderTop(); setHTML($('#nav'),''); $('#hint').style.display='none'; if(!$('.create')) renderCreate(); return; }
   if($('.create')) $('#view').innerHTML='';
   guard('top', renderTop); guard('hint', renderHint); guard('nav', renderNav); renderView();
@@ -449,15 +507,23 @@ const ACT = {
     modal(`<h2>${it.icon} ${esc(it.name)}</h2><p>${D.SLOT_NAMES[it.slot]} · ${statLine(it.stats)} (Common; higher rarities scale stats)</p><h3>Skills</h3>${it.skills.map(s=>`<p><b>${skillName(s)}</b> (${D.SKILLS[s].ap} AP): ${esc(D.SKILLS[s].desc)}<br><small class="muted">Learned by: ${G.S.chars.filter(c=>c.learned[s]).map(c=>esc(c.name)).join(', ')||'nobody yet'}</small></p>`).join('')}<h3>Where it comes from</h3><ul>${itemSources(it.id).map(s=>`<li>${esc(s.text)}</li>`).join('')}</ul><p class="small">Owned: ${G.S.inv.filter(u=>u.id===it.id).length}</p>`); },
   closeModal(){ closeModal(); },
   tutSkip(){ G.S.flags.tutDone=1; }, tutReset(){ G.S.flags.tutDone=0; G.toast('The guide is back.'); },
-  exportSave(){ const s=exportSave(); modal(`<h2>Export save</h2><p class="muted small">Copy this text and keep it somewhere safe.</p><textarea id="exp" readonly>${s}</textarea><div class="row"><button class="btn sm go" data-a="copyExp">Copy</button></div>`); },
-  copyExp(){ const t=$('#exp'); t.select(); try{ navigator.clipboard.writeText(t.value).then(()=>G.toast('Copied!')); }catch(e){ document.execCommand('copy'); G.toast('Copied!'); } },
+  exportSave(){ codeModal(exportSave(), '💾 Save code', 'Copy this text and keep it somewhere safe. Paste it back with “Paste a save code”.'); },
+  exportBroken(){ codeModal(encodeRaw(G.loadFailed.raw), 'Damaged save', 'This is the save that failed to load, as a code. Keep it in case it can be repaired.'); },
+  copyExp(){ const t=$('#exp'); t.select(); copyText(t.value).then(ok=>{ if(ok){ if(G.S.started&&!G.loadFailed){ G.S.flags.lastCopy=Date.now(); save(); } G.toast('📋 Copied!','good'); } else G.toast('Select the text and copy it.'); }); },
+  copyCode(){ const code=exportSave(); copyText(code).then(ok=>{ if(ok){ G.S.flags.lastCopy=Date.now(); save(); G.toast('📋 Save code copied. Paste it somewhere safe (Notes works).','good'); renderAll(); } else codeModal(code, '💾 Save code', 'Copying was blocked. Select the text below and copy it.'); }); },
+  nudgeLater(){ G.S.flags.nudgeSnooze=Date.now(); },
+  a2hsLater(){ a2hsSet(Object.assign(a2hsState(), {dismissedAt:Date.now(), n:(a2hsState().n||0)+1})); UI.a2hsForce=null; UI.a2hsOpen=false; UI.a2hsHidden=true; },
+  a2hsOpen(){ UI.a2hsOpen=true; }, a2hsShow(){ UI.a2hsForce='full'; UI.a2hsOpen=true; UI.a2hsHidden=false; },
+  restoreAsk(d){ modal(`<h2>Restore this backup?</h2><p>Your current game is kept as the “Before the last restore” backup, so you can switch back.</p><div class="row gap"><button class="btn go" data-a="restoreDo" data-k="${esc(d.k)}">Restore</button><button class="btn" data-a="closeModal">Cancel</button></div>`); },
+  restoreDo(d){ try{ restoreBackup(d.k); closeModal(); UI.tab='town'; UI.place=null; UI.battleKey=null; $('#view').innerHTML=''; G.toast('Backup restored.','good'); }catch(e){ G.toast('Could not restore: '+e.message,'bad'); } },
+  freshAfterFail(){ startFreshAfterFail(); $('#view').innerHTML=''; },
   importOpen(){ modal(`<h2>Import save</h2><p class="muted small">Paste a v2 save. This replaces your current game.</p><textarea id="imp" placeholder="Paste save here"></textarea><div class="row"><button class="btn sm go" data-a="importDo">Import</button></div><p id="imperr" class="short"></p>`); },
-  importDo(){ try{ importSave($('#imp').value); closeModal(); G.toast('Save imported!','good'); UI.battleKey=null; }catch(e){ $('#imperr').textContent=e.message; } },
-  resetAsk(){ modal(`<h2>Hard reset?</h2><p>This deletes your party, town and everything else. It can't be undone. Export your save first if you might want it back.</p><div class="row gap"><button class="btn danger" data-a="resetDo">Yes, delete everything</button><button class="btn" data-a="closeModal">Cancel</button></div>`); },
-  resetDo(){ hardReset(); closeModal(); UI.tab='town'; UI.place=null; $('#view').innerHTML=''; save(); },
+  importDo(){ try{ importSave($('#imp').value); closeModal(); G.toast('Save imported!','good'); UI.battleKey=null; UI.tab='town'; UI.place=null; $('#view').innerHTML=''; }catch(e){ $('#imperr').textContent=e.message; } },
+  resetAsk(){ modal(`<h2>Hard reset?</h2><p>This deletes your party, town and everything else. A copy is kept as a backup in this browser, but copy your save code first if you might want it back.</p><p>Type <b>RESET</b> to confirm.</p><input id="resetTxt" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RESET" aria-label="Type RESET"><p id="reseterr" class="short small"></p><div class="row gap"><button class="btn danger" data-a="resetDo">Delete everything</button><button class="btn" data-a="closeModal">Cancel</button></div>`); setTimeout(()=>{ const i=$('#resetTxt'); if(i) i.focus(); },50); },
+  resetDo(){ const v=(($('#resetTxt')||{}).value||'').trim(); if(v!=='RESET'){ $('#reseterr').textContent='Type RESET (in capitals) to confirm.'; return; } hardReset(); closeModal(); UI.tab='town'; UI.place=null; $('#view').innerHTML=''; save(); },
   crace(d){ syncNames(); CREATE[+d.i].race=d.r; renderCreate(); },
   rname(d){ syncNames(); const pool=NAMES.filter(n=>!CREATE.some(x=>x.name===n)); CREATE[+d.i].name=pool[Math.floor(Math.random()*pool.length)]; renderCreate(); },
-  begin(){ syncNames(); createParty(CREATE); UI.tab='town'; UI.place=null; save(); $('#view').innerHTML='';
+  begin(){ syncNames(); createParty(CREATE); requestPersist(); UI.tab='town'; UI.place=null; save(); $('#view').innerHTML='';
     modal(`<h2>🏮 Welcome to Lanternfall</h2><p>Your companions have arrived. Nothing will attack you here.</p><p>Look around the town first: put your one worker to work at the 🏛️ Town Hall, then tap the 🔥 campfire when you are ready to set out.</p><button class="btn go" data-a="closeModal">Explore the town</button>`); },
 };
 function syncNames(){ CREATE.forEach((x,i)=>{ const el=$('#cn'+i); if(el) x.name=el.value.trim()||x.name; }); }
@@ -495,7 +561,7 @@ function loop(){
   if(UI.tab==='camp' && G.S.loc==='exp'){ if(now-lastBattleDraw>120 && !UI.pointer){ guard('battle', renderBattle, $('#view')); lastBattleDraw=now; } }
   else { G.ev.length=0; if(UI.tab==='camp' && $('#view .battle')) renderView(); }
   guard('top', renderTop);
-  if(now-UI.lastPanel>1000 && !UI.pointer && !UI.modalOpen && !(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))){ guard('nav', renderNav); guard('hint', renderHint); if(!(UI.tab==='camp'&&G.S.loc==='exp')) renderView(); else UI.lastPanel=now; }
+  if(now-UI.lastPanel>1000 && !UI.pointer && !UI.modalOpen && !(document.activeElement&&/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))){ guard('nav', renderNav); guard('hint', renderHint); guard('nudge', renderNudge); if(!(UI.tab==='camp'&&G.S.loc==='exp')) renderView(); else UI.lastPanel=now; }
 }
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden) save(); else loop(); });
 window.addEventListener('pagehide', save);
@@ -507,12 +573,13 @@ window.__debug = {
   town(sec){ const q=G.quiet; G.quiet=true; try{ let l=sec; while(l>0){ const c=Math.min(10,l); tickProfs(c); tickTown(c); l-=c; } } finally{ G.quiet=q; } save(); renderAll(); },
   give(o){ const S=G.S; if(o.gold) S.gold+=o.gold; if(o.diamonds) S.diamonds+=o.diamonds; if(o.mats) for(const m in o.mats) S.mats[m]=(S.mats[m]||0)+o.mats[m]; if(o.items) o.items.forEach(([id,r])=>addItem(id,r)); dirty(); save(); renderAll(); },
   away(sec){ save(); G.S.last=Date.now()-sec*1000; localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); G.noSave=true; },
-  ui: UI, render: ()=>renderAll(),
+  ui: UI, render: ()=>renderAll(), a2hsDecision, envSafariTab, nudgeDue, listBackups,
 };
 
 load();
 if(G.S.started){ const away=(Date.now()-(G.S.last||Date.now()))/1000; if(away>60){ const sum=offline(away); setTimeout(()=>welcomeBack(sum), 300); } }
 if(G.S.loc==='exp'){ G.S.battle=null; if(G.S.started) UI.tab='camp'; } // a reload starts a fresh fight
+requestPersist().then(()=>{ if(UI.tab==='codex') renderAll(); });
 renderAll();
 if(G.newJourney) setTimeout(newJourney, 200);
 setInterval(loop, 100);

@@ -32,6 +32,17 @@ A slow, cozy idle RPG for a party of three. You start in a painted town, choose 
   - Complete a zone's collection (every foe Mastered, every Gilded variant beaten, and the boss) to earn its relic. Relics are never dropped.
 - **Offline.** Workers keep working for up to 12 h. An expedition in progress keeps fighting at normal pace until stamina runs out, then the party rests.
 
+## Keeping your save safe
+- **💾 Save** (top bar) is the one-tap **Copy save code** button. From there you can also paste a code, see your backups, or hard reset (you must type `RESET`). Every few days a gentle reminder offers to copy the code again.
+- **iPhone:** Safari can clear a website's data after about 7 days without a visit. In a Safari tab the game shows a one-time "Add to Home Screen" prompt (Share → Add to Home Screen), and shows a smaller one again 3 days after you dismiss it. The Home Screen app has its own storage, so copy your save code in Safari and paste it into the app.
+- The game asks the browser for persistent storage (`navigator.storage.persist()`) where it is supported.
+- **Backups** are kept in this browser:
+  - the last 3 autosave backups (one every 10 minutes of play),
+  - 1 daily backup,
+  - "before the last hard reset",
+  - "before the last restore".
+- **A save that can't load never turns into a new game.** The damaged save is kept under `lanternfall.save.broken` and a recovery screen offers Restore backup, Export the damaged save, or Paste a save code.
+
 ## Pacing (from `tools/sim.js`)
 | Milestone | Active player (non-stop) | Regular player (3 sessions/day, 95 min) |
 |---|---|---|
@@ -48,4 +59,6 @@ A slow, cozy idle RPG for a party of three. You start in a painted town, choose 
 - `ui.js`, `style.css`, `index.html`: the interface (parchment and wood, phone first). Every page render is guarded.
 - `art/`: painted portraits, maps, battle backdrops, mentors and monsters (webp). `tools/art.py` rebuilds them from the sources.
 - `tools/sim.js`: pacing sim. `node tools/sim.js active 8` or `node tools/sim.js regular 12`.
+- `tools/test_save.py`: save-safety tests (iPhone Safari user agent, `navigator.standalone` mocked). `python3 tools/test_save.py <url>`.
+- `manifest.webmanifest`, `art/apple-touch-icon.png`, `art/icon-*.png`: Home Screen app manifest and icons.
 - `tools/test.py`: headless Chrome test at iPhone, iPad landscape and desktop. `python3 tools/test.py <url>`. Screenshots go to `shots/`.
