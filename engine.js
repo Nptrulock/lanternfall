@@ -1,66 +1,70 @@
 'use strict';
-/* Lanternfall — engine (no DOM). Exposes G. */
-const G = {S:null, ev:[], quiet:false, toast:null, now:()=>Date.now()};
+/* Lanternfall v2 — engine (no DOM). Exposes G. */
+const G = {S:null, ev:[], quiet:false, toast:null, now:()=>Date.now(), cv:1};
 const SAVE_KEY = 'lanternfall.save';
-const SAVE_V = 2;
+const SAVE_V = 3;
 const rnd = (a,b)=>a+Math.random()*(b-a), ri=(a,b)=>Math.floor(rnd(a,b+1)), pick=a=>a[Math.floor(Math.random()*a.length)], chance=p=>Math.random()<p;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const fmtTime=s=>{s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h?`${h}h ${m}m`:m?`${m}m ${x}s`:`${x}s`};
+const fmtTime=s=>{s=Math.max(0,Math.floor(s));const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${x}s`:`${x}s`};
+const dirty=()=>{ G.cv++; };
 
-/* ---------------- curves ---------------- */
-const xpNeed = L => Math.round(10*Math.pow(L,2.3)+2);
-const profNeed = L => Math.round(30*Math.pow(L,1.6));
+/* ---------------- pacing ---------------- */
+const PACE = {action:1200, between:2600, victory:1600, start:900};
+const xpNeed = L => Math.round(9*Math.pow(L,2.25)+6);
+const profNeed = L => Math.round(300*Math.pow(L,1.9));        // seconds of work per profession level
+const enduranceNeed = L => Math.round(300*Math.pow(L,1.45));   // seconds of training per Endurance level
+const mentorNeed = r => Math.round(600*Math.pow(r+1,1.5));     // seconds of study for the next mentor rank
 const MAX_LV = 60;
 
 /* ---------------- state ---------------- */
 function newChar(name, race){
-  const c = {name, race, lv:1, xp:0, hp:1, mp:0, equip:{weapon:null,armor:null,acc:null,relic:null}, ap:{}, learned:{}, job:null, jobs:{}, tactic:'auto'};
-  return c;
+  return {name, race, lv:1, xp:0, hp:1, mp:0, stam:D.STAM.base, endLv:1, endXp:0, act:'rest',
+    equip:{weapon:null,armor:null,acc:null,relic:null}, ap:{}, learned:{}, job:null, sub:null, jobs:{}, locks:{}, mentors:{}, tactic:'auto', wins:0};
 }
 function newState(){
+  const b={}; for(const k of D.BUILD_ORDER) b[k]=D.BUILD[k].start;
   return {v:SAVE_V, created:Date.now(), last:Date.now(), started:false,
-    chars:[], gold:30, diamonds:25, inv:[], nextUid:1, mats:{}, pots:{potion:3}, food:null, elixir:null,
-    zone:0, zones:D.ZONES.map(()=>({wins:0, boss:false, bossKills:0, sinceBoss:0})), auto:true, wiped:false, battle:null, rest:0,
-    profs:Object.fromEntries(D.PROF_ORDER.map(p=>[p,{lv:1,xp:0,acc:0}])), workers:{}, buildings:{smithy:1,tavern:0,apothecary:0,library:0,guild:0}, banners:{forge:1,chapel:0,arcanum:0,den:0,lodge:0}, pity:{},
-    bestiary:{}, relicsFound:{}, flags:{}, tut:0,
-    stats:{wins:0, losses:0, kills:0, bosses:0, bought:0, learned:0, goldEarned:0, battles:0, relics:0, play:0, pulls:0, diamondsEarned:0},
-    settings:{speed:1, usePots:true, autoRest:true, autoBoss:false},
+    chars:[], gold:20, diamonds:D.START_DIAMONDS, inv:[], nextUid:1, mats:{}, meals:{}, food:null,
+    loc:'town', exp:null, zone:0, zones:D.ZONES.map(()=>({wins:0, boss:false, bossKills:0, sinceBoss:0})), battle:null, pendingBoss:false, pause:0,
+    profs:Object.fromEntries(D.PROF_ORDER.map(p=>[p,{lv:1,xp:0,acc:{}}])), workers:{}, hired:1, buildings:b, pity:{},
+    bestiary:{}, variants:{}, beastRewards:{}, relicsFound:{}, flags:{}, tut:0,
+    stats:{wins:0, losses:0, kills:0, bosses:0, bought:0, learned:0, goldEarned:0, battles:0, relics:0, play:0, pulls:0, diamondsEarned:0, departs:0, returns:0, rounds:0, battleMs:0},
+    settings:{autoBoss:false},
     log:[]};
 }
-/* versioned migrations: index i upgrades a save from v=i to v=i+1 */
-const MIGRATIONS = [
-  s => { s.v = 1; return s; }, // v0 (pre-release) -> v1
-  s => { s.v = 2; (s.inv||[]).forEach(u=>{ if(!u.relic && u.r==null) u.r=0; }); if(s.diamonds==null) s.diamonds=25; return s; }, // v1 -> v2: gear rarity + gacha
-];
+/* Save versions: v1/v2 were the first release. v3 (this redesign) is a fresh start: older saves are backed up, not converted. */
 function migrate(s){
   if(typeof s.v!=='number') s.v=0;
-  while(s.v<SAVE_V){ s = MIGRATIONS[s.v](s); }
-  // fill any missing fields from a fresh state (forward-compatible)
+  if(s.v<3) throw Object.assign(new Error('old'), {oldSave:true});
   const f = newState();
   for(const k in f) if(s[k]===undefined) s[k]=f[k];
   for(const k in f.settings) if(s.settings[k]===undefined) s.settings[k]=f.settings[k];
   for(const k in f.stats) if(s.stats[k]===undefined) s.stats[k]=f.stats[k];
-  for(const p of D.PROF_ORDER) if(!s.profs[p]) s.profs[p]={lv:1,xp:0,acc:0};
-  for(const b of D.BUILD_ORDER) if(s.buildings[b]===undefined) s.buildings[b]=0;
-  for(const b of D.BANNER_ORDER) if(s.banners[b]===undefined) s.banners[b]=b==='forge'?1:0;
+  for(const p of D.PROF_ORDER) if(!s.profs[p]) s.profs[p]={lv:1,xp:0,acc:{}};
+  for(const b of D.BUILD_ORDER) if(s.buildings[b]===undefined) s.buildings[b]=D.BUILD[b].start;
   while(s.zones.length<D.ZONES.length) s.zones.push({wins:0,boss:false,bossKills:0,sinceBoss:0});
-  s.chars.forEach(c=>{ for(const k of ['ap','learned','jobs']) c[k]=c[k]||{}; c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); if(!c.tactic)c.tactic='auto'; });
+  const nc=newChar('x','human');
+  s.chars.forEach(c=>{ for(const k in nc) if(c[k]===undefined) c[k]=JSON.parse(JSON.stringify(nc[k])); c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); });
   return s;
 }
 function save(){ if(G.noSave) return false; try{ G.S.last=Date.now(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.S)); return true; }catch(e){ console.warn('save failed', e); return false; } }
 function load(){
   let raw=null; try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){}
-  if(raw){ try{ G.S = migrate(JSON.parse(raw)); return true; }catch(e){ console.warn('bad save, starting fresh', e); try{localStorage.setItem(SAVE_KEY+'.broken', raw)}catch(_){} } }
-  G.S = newState(); return false;
+  G.newJourney=false;
+  if(raw){ try{ G.S = migrate(JSON.parse(raw)); dirty(); return true; }catch(e){
+      if(e.oldSave){ try{ localStorage.setItem(SAVE_KEY+'.v2backup', raw); localStorage.removeItem(SAVE_KEY); }catch(_){} G.newJourney=true; }
+      else { console.warn('bad save, starting fresh', e); try{localStorage.setItem(SAVE_KEY+'.broken', raw)}catch(_){} } } }
+  G.S = newState(); dirty(); return false;
 }
 function exportSave(){ save(); return btoa(unescape(encodeURIComponent(JSON.stringify(G.S)))); }
 function importSave(str){
   str=(str||'').trim(); let obj;
   try{ obj = JSON.parse(decodeURIComponent(escape(atob(str)))); }catch(e){ try{ obj=JSON.parse(str); }catch(e2){ throw new Error('That doesn\'t look like a Lanternfall save.'); } }
   if(!obj || !Array.isArray(obj.chars)) throw new Error('That doesn\'t look like a Lanternfall save.');
-  G.S = migrate(obj); G.S.battle=null; save(); return true;
+  try{ G.S = migrate(obj); }catch(e){ if(e.oldSave) throw new Error('That save is from the first version of Lanternfall. v2 is a fresh start.'); throw e; }
+  G.S.battle=null; dirty(); save(); return true;
 }
-function hardReset(){ try{localStorage.removeItem(SAVE_KEY)}catch(e){} G.S=newState(); }
+function hardReset(){ try{localStorage.removeItem(SAVE_KEY)}catch(e){} G.S=newState(); dirty(); }
 
 function log(msg, cls){ const S=G.S; S.log.push({m:msg, c:cls||''}); if(S.log.length>60) S.log.splice(0, S.log.length-60); }
 function emit(e){ if(!G.quiet){ G.ev.push(e); if(G.ev.length>200) G.ev.splice(0,100); } }
@@ -77,8 +81,8 @@ function equippedBy(uid){ return G.S.chars.findIndex(c=>Object.values(c.equip).i
 function charGear(c){ return D.SLOTS.map(s=>c.equip[s]!=null?invItem(c.equip[s]):null).filter(Boolean); }
 
 /* ---------------- derived stats ---------------- */
-const SUM_KEYS = ['hit','crit','dodge','counter','double','regen','postHeal','gold','matFind','dropFind','dr','physFlat','physPct','spellPct','healPct','holyPct','wildPct','shadowPct','weakPct','spellFlat','echo','haste','taunt','first','rage','cleaveChance','pack','critDmg','mpCut','killMp','poisonPlus','thorns','dmgPct','endure','gearPlus'];
-function addEff(d, eff, src){
+const SUM_KEYS = ['hit','crit','dodge','counter','double','regen','postHeal','gold','dr','physFlat','physPct','spellPct','healPct','holyPct','wildPct','shadowPct','weakPct','spellFlat','echo','haste','taunt','first','rage','cleaveChance','pack','critDmg','mpCut','killMp','poisonPlus','thorns','dmgPct','endure','gearPlus','stam'];
+function addEff(d, eff){
   if(!eff) return;
   if(eff.stat) for(const k in eff.stat) d[k]+=eff.stat[k];
   for(const k of SUM_KEYS) if(eff[k]) d.f[k]=(d.f[k]||0)+eff[k];
@@ -89,160 +93,200 @@ function addEff(d, eff, src){
   if(eff.spellFlat && eff.sfScale) d.f.spellFlat += Math.floor(d.lv/eff.sfScale);
 }
 function raceTraits(c){ return D.RACES[c.race].traits.filter(t=>c.lv>=t.lv); }
+// grid nodes a hero has unlocked in a job
+function jobNodes(c, jid){ const jt=c.jobs[jid]; if(!jt) return []; return D.JOBS[jid].nodes.filter(n=>jt.nodes[n.id]); }
+// abilities kept from other jobs (lock-in): one node per job, active when that job is NOT the main job
+function lockedNodes(c){ const out=[]; for(const jid in c.locks){ if(jid===c.job) continue; const n=D.JOBS[jid]&&D.JOBS[jid].node[c.locks[jid]]; if(n && c.jobs[jid]&&c.jobs[jid].nodes[n.id]) out.push({jid, n}); } return out; }
 // all skills currently usable: { id: source }
 function skillSet(c){
   const out = {};
   for(const id in c.learned) out[id]='learned';
   for(const u of charGear(c)) for(const id of defOf(u).skills) if(!out[id]) out[id]='gear';
-  if(c.job){ const jt=c.jobs[c.job]; if(jt) for(const n of D.JOBS[c.job].tree) if(jt.nodes&&jt.nodes[n.id]&&n.eff.grant) out[n.eff.grant]='job'; }
+  if(c.job){ out[D.JOBS[c.job].cmd]='job'; for(const n of jobNodes(c,c.job)) if(n.eff.grant) out[n.eff.grant]='job'; }
+  if(c.sub && subjobOk(c, c.sub)){ out[D.JOBS[c.sub].cmd] = out[D.JOBS[c.sub].cmd]||'sub'; for(const n of jobNodes(c,c.sub)) if(n.eff.grant && !out[n.eff.grant]) out[n.eff.grant]='sub'; }
+  for(const {n} of lockedNodes(c)) if(n.eff.grant && !out[n.eff.grant]) out[n.eff.grant]='lock';
   return out;
 }
-function calc(c, battleBuffs){
+function mentorRank(c, mid){ return (c.mentors[mid]&&c.mentors[mid].rank)||0; }
+function mentorEff(c){ const o={}; for(const mid in c.mentors){ const r=mentorRank(c,mid); if(!r) continue; const m=D.MENTOR[mid];
+    const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v; o[m.plus]=(o[m.plus]||0)+k(D.MENTOR_PLUS(r));
+    const mn=D.MENTOR_MINUS(r); if(mn) o[m.minus]=(o[m.minus]||0)-(m.minus==='hp'?mn*2:mn); } return o; }
+const _calc = new WeakMap();
+function calcBase(c){
+  const hit=_calc.get(c); if(hit && hit.v===G.cv) return hit.d;
   const r = D.RACES[c.race];
   const d = {lv:c.lv, f:{}};
   for(const k of D.STATS) d[k] = r.base[k] + Math.floor(r.grow[k]*(c.lv-1) + 1e-9);
   for(const t of raceTraits(c)) addEff(d, t.eff);
-  // gear
   const gp = raceTraits(c).some(t=>t.eff.gearPlus) ? 1 : 0;
   for(const u of charGear(c)){ const it=defOf(u); for(const k in it.stats) d[k]+=it.stats[k];
     if(gp && it.slot==='weapon') d[it.stats.mag>it.stats.str?'mag':'str']+=1; if(gp && it.slot==='armor') d.def+=1; }
-  // passives (learned or worn)
   const ss = skillSet(c);
   for(const id in ss){ const s=D.SKILLS[id]; if(s.kind==='passive') addEff(d, s.eff); }
-  // job
-  if(c.job){ const j=D.JOBS[c.job]; for(const k in j.stats) d[k]+=j.stats[k];
-    const jt=c.jobs[c.job]; if(jt) for(const n of j.tree) if(jt.nodes[n.id]) addEff(d, n.eff); }
-  // party buffs
-  const S=G.S;
-  if(S.food && S.food.left>0) for(const k in D.FOOD[S.food.id].buff) d[k]+=D.FOOD[S.food.id].buff[k];
-  if(S.elixir && S.elixir.left>0) for(const k in D.POTION[S.elixir.id].elixir) d[k]+=D.POTION[S.elixir.id].elixir[k];
-  if(battleBuffs) for(const k in battleBuffs) d[k]+=battleBuffs[k];
-  d.maxHp = Math.max(1, d.hp); d.maxMp = Math.max(0, d.mp);
-  return d;
+  if(c.job){ const j=D.JOBS[c.job]; for(const k in j.stats) d[k]+=j.stats[k]; for(const n of jobNodes(c,c.job)) if(!n.eff.grant) addEff(d, n.eff); }
+  if(c.sub && subjobOk(c,c.sub)){ const j=D.JOBS[c.sub]; for(const k in j.stats) d[k]+=Math.max(1,Math.floor(j.stats[k]/2)); }
+  for(const {n} of lockedNodes(c)) if(!n.eff.grant) addEff(d, n.eff);
+  const me=mentorEff(c); for(const k in me) d[k]+=me[k];
+  const S=G.S; if(S.food && S.loc==='exp') for(const k in D.FOOD[S.food].buff) d[k]+=D.FOOD[S.food].buff[k];
+  for(const k of ['str','def','mag','agi']) d[k]=Math.max(k==='def'?0:1, d[k]);
+  d.maxHp = Math.max(4, d.hp); d.maxMp = Math.max(0, d.mp);
+  d.maxStam = D.STAM.base + D.STAM.perLv*(c.endLv-1) + (d.f.stam||0);
+  _calc.set(c, {v:G.cv, d}); return d;
 }
+function calc(c, buffs){ const b=calcBase(c); if(!buffs) return b; let any=false; for(const k in buffs) if(buffs[k]){ any=true; break; } if(!any) return b;
+  const d=Object.assign({}, b); for(const k in buffs) d[k]+=buffs[k]; d.maxHp=Math.max(4,d.hp); d.maxMp=Math.max(0,d.mp); return d; }
+function maxStam(c){ return calcBase(c).maxStam; }
 function typeCounts(c){ const n={}; for(const id in c.learned){ const t=D.SKILLS[id].type; n[t]=(n[t]||0)+1; } return n; }
-function jobUnlocked(c, jid){
-  const j=D.JOBS[jid], n=typeCounts(c);
-  for(const t in j.req) if((n[t]||0)<j.req[t]) return false;
-  if(j.mentor && G.S.buildings.guild < D.MENTOR[j.mentor].gl) return false;
-  return true;
-}
-function mentorHere(jid){ const m=D.MENTORS.find(m=>m.job===jid); return m && G.S.buildings.guild>=m.gl; }
+function bestMentorRank(c, jid){ let r=0; for(const m of D.MENTORS) if(m.job===jid) r=Math.max(r, mentorRank(c,m.id)); return r; }
+function jobReqMet(c, jid){ const j=D.JOBS[jid], n=typeCounts(c); for(const t in j.req) if((n[t]||0)<j.req[t]) return false; return true; }
+function jobUnlocked(c, jid){ const j=D.JOBS[jid]; if(!jobReqMet(c,jid)) return false; if(j.adv && bestMentorRank(c,jid)<3) return false; return true; }
+function jobWhy(c, jid){ const j=D.JOBS[jid], n=typeCounts(c), miss=[];
+  for(const t in j.req) if((n[t]||0)<j.req[t]) miss.push(`${j.req[t]} learned ${D.TYPES[t].name} skill${j.req[t]>1?'s':''} (have ${n[t]||0})`);
+  if(j.adv && bestMentorRank(c,jid)<3){ const ms=D.MENTORS.filter(m=>m.job===jid).map(m=>m.name).join(' or '); miss.push(`rank 3 with ${ms}`); }
+  return miss.join(' · '); }
+function subjobOk(c, jid){ return jid && jid!==c.job && bestMentorRank(c,jid)>=1; }
+function setJob(ci, jid){ const c=G.S.chars[ci]; if(jid && !jobUnlocked(c,jid)) return false; c.job=jid||null; if(jid && !c.jobs[jid]) c.jobs[jid]={jp:0, nodes:{core:1}}; if(c.sub===jid) c.sub=null; dirty(); fixHpMp(c); return true; }
+function setSub(ci, jid){ const c=G.S.chars[ci]; if(jid && !subjobOk(c,jid)) return false; c.sub=jid||null; if(jid && !c.jobs[jid]) c.jobs[jid]={jp:0, nodes:{core:1}}; dirty(); fixHpMp(c); return true; }
 function nodeAvailable(c, jid, n){
-  const jt=c.jobs[jid]||{nodes:{}};
-  if(jt.nodes[n.id]) return {ok:false, why:'Learned'};
-  if(n.req && !jt.nodes[n.req]) return {ok:false, why:'Needs '+D.JOBS[jid].tree.find(x=>x.id===n.req).name};
-  if(n.tier>=3 && !mentorHere(jid)) { const m=D.MENTORS.find(m=>m.job===jid); return {ok:false, why:`Needs mentor ${m.name} (Guild Hall Lv ${m.gl})`}; }
-  if((jt.jp||0)<n.cost) return {ok:false, why:`Needs ${n.cost} JP`};
+  const jt=c.jobs[jid]||{jp:0, nodes:{}};
+  if(jt.nodes[n.id]) return {ok:false, why:'Unlocked', have:1};
+  if(c.job!==jid) return {ok:false, why:'Only the main job earns JP'};
+  if(!n.links.some(l=>jt.nodes[l])) return {ok:false, why:'Unlock a linked node first'};
+  if((jt.jp||0)<n.cost) return {ok:false, why:`Needs ${n.cost} JP (have ${jt.jp||0})`};
   return {ok:true};
 }
-function setJob(ci, jid){ const c=G.S.chars[ci]; if(jid && !jobUnlocked(c,jid)) return false; c.job=jid||null; if(jid && !c.jobs[jid]) c.jobs[jid]={jp:0, nodes:{}}; fixHpMp(c); return true; }
-function buyNode(ci, jid, nid){ const c=G.S.chars[ci], n=D.JOBS[jid].tree.find(x=>x.id===nid); const a=nodeAvailable(c,jid,n); if(!a.ok) return false; const jt=c.jobs[jid]; jt.jp-=n.cost; jt.nodes[nid]=1; log(`🎖️ ${c.name} learned ${n.name} (${D.JOBS[jid].name}).`,'good'); fixHpMp(c); return true; }
-function fixHpMp(c){ const d=calc(c); c.hp=Math.min(c.hp, d.maxHp); c.mp=Math.min(c.mp, d.maxMp); }
+function buyNode(ci, jid, nid){ const c=G.S.chars[ci], n=D.JOBS[jid].node[nid]; if(!n) return false; const a=nodeAvailable(c,jid,n); if(!a.ok) return false; const jt=c.jobs[jid]; jt.jp-=n.cost; jt.nodes[nid]=1; dirty();
+  log(`✦ ${c.name} unlocked ${n.name} (${D.JOBS[jid].name}).`,'good'); fixHpMp(c); return true; }
+function jobProgress(c, jid){ const jt=c.jobs[jid]; if(!jt) return {n:0, of:D.JOBS[jid].nodes.length-1}; return {n:Object.keys(jt.nodes).filter(k=>k!=='core').length, of:D.JOBS[jid].nodes.length-1}; }
+function lockable(c, jid){ return jobNodes(c,jid).filter(n=>n.ability); }
+function setLock(ci, jid, nid){ const c=G.S.chars[ci]; if(!nid){ delete c.locks[jid]; dirty(); return true; }
+  const n=D.JOBS[jid].node[nid]; if(!n||!n.ability||!(c.jobs[jid]&&c.jobs[jid].nodes[nid])) return false; c.locks[jid]=nid; dirty(); fixHpMp(c); return true; }
+function fixHpMp(c){ const d=calcBase(c); c.hp=Math.min(c.hp, d.maxHp); c.mp=Math.min(c.mp, d.maxMp); c.stam=Math.min(c.stam, d.maxStam); }
 
-/* ---------------- village ---------------- */
-function villageLevel(){ return D.BUILD_ORDER.reduce((a,b)=>a+G.S.buildings[b],0) + D.BANNER_ORDER.reduce((a,b)=>a+G.S.banners[b],0); }
-function workerSlots(){ const vl=villageLevel(); let n=1; for(const w of D.WORKER_SLOTS) if(vl>=w.vl) n=w.n; return n; }
-function workersUsed(){ return Object.values(G.S.workers).filter(Boolean).length; }
-function toggleWorker(p){ const S=G.S; if(S.workers[p]){ delete S.workers[p]; return true; } if(workersUsed()>=workerSlots()) return false; S.workers[p]=true; return true; }
-function buildCost(b){ const L=G.S.buildings[b]+1; if(L>D.BMAX) return null; const c=D.BUILD_COST[L]; const mats={}; if(c.stone) mats.stone=c.stone; if(L>=2){ const x=D.BUILD_MATS[b][L-2]; mats[x]=(mats[x]||0)+2*L; } return {lv:L, prof:c.prof, gold:c.gold, mats}; }
-function canBuild(b){ const c=buildCost(b); if(!c) return {ok:false, why:'Max level'}; const S=G.S, p=D.BUILDINGS[b].prof;
-  const miss=[]; if(S.profs[p].lv<c.prof) miss.push(`${D.PROFS[p].name} Lv ${c.prof}`); if(S.gold<c.gold) miss.push(`${c.gold} gold`);
+/* ---------------- town: workers & professions ---------------- */
+function workerSlots(){ return G.S.hired; }
+function workersUsed(){ return Object.values(G.S.workers).reduce((a,b)=>a+(b||0),0); }
+function hireCost(){ const n=G.S.hired; return n<D.WORKER_COST.length ? D.WORKER_COST[n] : null; }
+function hire(){ const S=G.S, c=hireCost(); if(c==null||S.gold<c) return false; S.gold-=c; S.hired++; log(`🧑‍🌾 ${D.WORKER_NAMES[S.hired-1]||'A new worker'} joins the town (${S.hired} workers).`,'good'); toast(`🧑‍🌾 Hired a worker (${S.hired} total)`,'good'); return true; }
+// workers[prof] = number assigned
+function assign(p, delta){ const S=G.S; const cur=S.workers[p]||0; if(delta>0 && workersUsed()>=workerSlots()) return false; const n=Math.max(0,cur+delta); if(n) S.workers[p]=n; else delete S.workers[p]; return true; }
+function zoneOpen(zi){ return zi===0 || G.S.zones[zi-1].boss; }
+function profEvery(o, L){ return Math.max(o[2], o[1]*Math.pow(0.965, L-1)); }
+function profOutputs(p){ const L=G.S.profs[p].lv; return D.PROFS[p].out.map(o=>({key:o[0], every:profEvery(o,L), minLv:o[3], zone:o[4], ok:L>=o[3] && zoneOpen(o[4])})); }
+function cookEvery(){ return Math.max(90, D.COOK_SEC*(1-0.02*(G.S.profs.cooking.lv-1))); }
+function bestMeal(){ const S=G.S; const ok=D.FOODS.filter(f=>f.tav<=S.buildings.tavern && f.cook<=S.profs.cooking.lv); return ok; }
+function gain(mat, n){ const S=G.S; if(mat==='diamond'){ S.diamonds+=n; S.stats.diamondsEarned+=n; if(G.sum) G.sum.diamonds=(G.sum.diamonds||0)+n; return; }
+  S.mats[mat]=(S.mats[mat]||0)+n; if(G.sum) G.sum.mats[mat]=(G.sum.mats[mat]||0)+n; }
+function tickProfs(dt){
+  const S=G.S;
+  for(const p in S.workers){ const w=S.workers[p]||0; if(!w) continue; const pr=S.profs[p];
+    if(pr.lv<MAX_LV){ pr.xp += dt*w; while(pr.xp>=profNeed(pr.lv) && pr.lv<MAX_LV){ pr.xp-=profNeed(pr.lv); pr.lv++; log(`${D.PROFS[p].icon} ${D.PROFS[p].name} reached Lv ${pr.lv}.`,'good'); toast(`${D.PROFS[p].icon} ${D.PROFS[p].name} Lv ${pr.lv}`,'good'); if(G.sum) G.sum.profUps++; } }
+    pr.acc=pr.acc||{};
+    if(p==='cooking'){ const list=bestMeal(); if(!list.length) continue; pr.acc.meal=(pr.acc.meal||0)+dt*w; const ev=cookEvery();
+      while(pr.acc.meal>=ev){ // cook the best recipe we have ingredients for
+        const f=[...list].reverse().find(f=>Object.entries(f.mats).every(([m,n])=>(S.mats[m]||0)>=n)); if(!f){ pr.acc.meal=Math.min(pr.acc.meal, ev); break; }
+        pr.acc.meal-=ev; for(const m in f.mats) S.mats[m]-=f.mats[m]; S.meals[f.id]=(S.meals[f.id]||0)+1; if(G.sum) G.sum.meals=(G.sum.meals||0)+1; }
+      continue; }
+    for(const o of profOutputs(p)){ if(!o.ok) continue; pr.acc[o.key]=(pr.acc[o.key]||0)+dt*(o.key==='diamond'?1:w); const n=Math.floor(pr.acc[o.key]/o.every); if(n<=0) continue; pr.acc[o.key]-=n*o.every;
+      if(o.key==='gear'){ for(let i=0;i<n;i++) smithForge(); }
+      else if(o.key==='study'){ const seen=Object.keys(S.bestiary); for(let i=0;i<n && seen.length;i++){ addKill(pick(seen), 1, true); } }
+      else gain(o.key, n); }
+  }
+}
+// Smithing occasionally forges a Common piece from the Forge pool (or any type if no hall built)
+function smithForge(){ const S=G.S; const types=D.BANNER_ORDER.filter(b=>S.buildings[b]>0).map(b=>D.BANNERS[b].type); const cap=Math.min(maxZoneOpen(), Math.floor(S.profs.smithing.lv/6));
+  const pool=D.ITEMS.filter(it=>it.tier<=cap && it.skills.some(s=>types.includes(D.SKILLS[s].type))); if(!pool.length) return;
+  const it=pick(pool); addItem(it.id, 0); log(`⚒️ The smithy forged a ${it.icon} ${it.name}.`,'loot'); toast(`⚒️ Smithy forged ${it.icon} ${it.name}`,'good'); if(G.sum) G.sum.items.push(it.name); }
+function profPerkText(p){ const L=G.S.profs[p].lv;
+  if(p==='cooking') return `Cooks a meal every ${fmtTime(cookEvery())} (needs ingredients and a Tavern recipe)`;
+  return profOutputs(p).map(o=>{ const nm=o.key==='diamond'?'💎 Diamond':o.key==='gear'?'🗡️ Common gear':o.key==='study'?'📜 bestiary study':D.MATS[o.key].icon+' '+D.MATS[o.key].name;
+    if(o.ok) return `${nm} every ${fmtTime(o.every)}`; const why=L<o.minLv?`Lv ${o.minLv}`:`reach ${D.ZONES[o.zone].name}`; return `${nm} — ${why}`; }).join(' · '); }
+
+/* ---------------- buildings ---------------- */
+function buildCost(b){ const L=G.S.buildings[b]+1; if(L>D.BMAX) return null; const c=D.BUILD_COST[L]; const mats={stone:c.stone, timber:c.timber};
+  if(L>=2){ const x=D.BUILD_MATS[b][L-2]; mats[x]=(mats[x]||0)+3*L; } const prof=D.BUILD[b].prof; return {lv:L, prof, profLv:prof?c.prof:0, gold:c.gold, mats}; }
+function canBuild(b){ const c=buildCost(b); if(!c) return {ok:false, why:'Max level'}; const S=G.S;
+  const miss=[]; if(c.prof && S.profs[c.prof].lv<c.profLv) miss.push(`${D.PROFS[c.prof].name} Lv ${c.profLv}`); if(S.gold<c.gold) miss.push(`${c.gold} gold`);
   for(const m in c.mats) if((S.mats[m]||0)<c.mats[m]) miss.push(`${c.mats[m]} ${D.MATS[m].name}`);
   return {ok:!miss.length, why:miss.join(', ')}; }
 function build(b){ const a=canBuild(b); if(!a.ok) return false; const c=buildCost(b), S=G.S; S.gold-=c.gold; for(const m in c.mats) S.mats[m]-=c.mats[m]; S.buildings[b]=c.lv;
-  log(`🏗️ The ${D.BUILDINGS[b].name} is now level ${c.lv}!`,'good'); toast(`🏗️ ${D.BUILDINGS[b].name} upgraded to Lv ${c.lv}`,'good'); return true; }
-function mineEvery(m, L){ return Math.max(m.min, m.every*(1-0.02*(L-1))); }
-function profPerk(p){ const L=G.S.profs[p].lv;
-  switch(p){
-    case 'mining': return {text:D.MINING.map(m=>L>=m.minLv?`${m.mat==='diamond'?'💎 Diamond':D.MATS[m.mat].icon+' '+D.MATS[m.mat].name} every ${fmtTime(mineEvery(m,L))}`:`${m.mat==='diamond'?'💎':D.MATS[m.mat].icon} ${m.mat==='diamond'?'Diamond':D.MATS[m.mat].name} at Lv ${m.minLv}`).join(' · ')};
-    case 'masonry': return {every:Math.max(5, 20-L*0.5), mat:'stone', text:`Quarries 1 Stone every ${Math.max(5,20-L*0.5).toFixed(1)}s`};
-    case 'alchemy': return {every:Math.max(8, 30-L*0.6), mat:'herb', text:`Gathers 1 Wild Herb every ${Math.max(8,30-L*0.6).toFixed(1)}s · potions −${Math.min(40,L)}% gold`};
-    case 'smithing': return {text:`Shop prices −${Math.min(40,L)}% · sell for +${Math.min(40,L)}%`};
-    case 'cooking': return {text:`Meals last +${L*3}% more battles`};
-    case 'scholarship': return {every:Math.max(10, 60-L*1.2), text:`Studies 1 bestiary entry every ${Math.max(10,60-L*1.2).toFixed(0)}s (counts as a kill toward knowledge)`};
-  } }
-function tickProfs(dt){
-  const S=G.S;
-  for(const p in S.workers){ if(!S.workers[p]) continue; const pr=S.profs[p]; if(pr.lv>=MAX_LV) continue;
-    const rate = 1 + 0.05*(D.PROFS[p].building?S.buildings[D.PROFS[p].building]:villageLevel()/5);
-    pr.xp += dt*rate;
-    while(pr.xp>=profNeed(pr.lv) && pr.lv<MAX_LV){ pr.xp-=profNeed(pr.lv); pr.lv++; log(`${D.PROFS[p].icon} ${D.PROFS[p].name} reached Lv ${pr.lv}.`,'good'); toast(`${D.PROFS[p].icon} ${D.PROFS[p].name} Lv ${pr.lv}`,'good'); if(G.sum) G.sum.profUps++; }
-    if(p==='mining'){ pr.accs=pr.accs||{}; for(const m of D.MINING){ if(pr.lv<m.minLv) continue; const ev=mineEvery(m,pr.lv); pr.accs[m.mat]=(pr.accs[m.mat]||0)+dt; const n=Math.floor(pr.accs[m.mat]/ev); if(n>0){ pr.accs[m.mat]-=n*ev;
-        if(m.mat==='diamond'){ S.diamonds+=n; S.stats.diamondsEarned+=n; if(G.sum) G.sum.diamonds=(G.sum.diamonds||0)+n; } else { S.mats[m.mat]=(S.mats[m.mat]||0)+n; if(G.sum) G.sum.mats[m.mat]=(G.sum.mats[m.mat]||0)+n; } } } continue; }
-    const pk=profPerk(p);
-    if(pk.every){ pr.acc=(pr.acc||0)+dt; let n=Math.floor(pr.acc/pk.every); pr.acc-=n*pk.every;
-      if(n>0){ if(pk.mat){ S.mats[pk.mat]=(S.mats[pk.mat]||0)+n; if(G.sum) G.sum.mats[pk.mat]=(G.sum.mats[pk.mat]||0)+n; }
-        else if(p==='scholarship'){ const seen=Object.keys(S.bestiary); if(seen.length) for(let i=0;i<n;i++){ const e=pick(seen); S.bestiary[e]++; } } } }
-  }
-}
-function shopDiscount(){ return 1-Math.min(40,G.S.profs.smithing.lv)/100; }
-function sellPrice(u){ const it=defOf(u); if(u.relic) return 400; return Math.max(1, Math.floor((it.price||Math.round(20*Math.pow(2.1,it.tier)))*0.4*D.RARITY[u.r||0].sell*(1+Math.min(40,G.S.profs.smithing.lv)/100 + 0.05*G.S.buildings.smithy))); }
-function shopItems(){ return D.ITEMS.filter(it=>it.shop===1); }
-function buyPrice(it){ return Math.ceil(it.price*shopDiscount()); }
-function buyItem(id){ const it=D.ITEM[id], p=buyPrice(it), S=G.S; if(it.shop!==1||S.buildings.smithy<1||S.gold<p) return false; S.gold-=p; addItem(id); S.stats.bought++; return true; }
-function sellItem(uid){ const S=G.S; const i=S.inv.findIndex(x=>x.uid===uid); if(i<0||equippedBy(uid)>=0) return 0; const g=sellPrice(S.inv[i]); S.inv.splice(i,1); S.gold+=g; return g; }
-// items whose skills are all learned by everyone who could need them = "mastered" (safe to sell): all skills learned by all 4 chars, or duplicates
-function isMastered(u){ const it=defOf(u); return !u.relic && it.skills.every(s=>G.S.chars.every(c=>c.learned[s])); }
-function bulkSellMastered(){ let g=0,n=0; for(const u of [...G.S.inv]) if(equippedBy(u.uid)<0 && isMastered(u)){ g+=sellItem(u.uid); n++; } return {g,n}; }
-function potCost(p){ return Math.ceil(p.gold*(1-Math.min(40,G.S.profs.alchemy.lv)/100)); }
+  const nm=D.PLACES[b].name; log(`🏗️ The ${nm} is now level ${c.lv}!`,'good'); toast(`🏗️ ${nm} ${c.lv===1?'built':'upgraded to Lv '+c.lv}`,'good'); dirty(); return true; }
 function canAfford(gold, mats){ const S=G.S; if(S.gold<gold) return false; for(const m in mats) if((S.mats[m]||0)<mats[m]) return false; return true; }
 function pay(gold, mats){ const S=G.S; S.gold-=gold; for(const m in mats) S.mats[m]-=mats[m]; }
-function buyPotion(id, n){ n=n||1; const p=D.POTION[id], S=G.S; if(p.apo>S.buildings.apothecary) return 0; let k=0;
-  for(let i=0;i<n;i++){ if(!canAfford(potCost(p), p.mats)) break; pay(potCost(p), p.mats);
-    if(p.elixir){ S.elixir={id, left:p.battles}; k++; break; } S.pots[id]=(S.pots[id]||0)+1; k++; } return k; }
-function mealBattles(f){ return Math.round(f.battles*(1+0.03*G.S.profs.cooking.lv)); }
-function buyFood(id){ const f=D.FOOD[id], S=G.S; if(f.tav>S.buildings.tavern||!canAfford(f.gold,f.mats)) return false; pay(f.gold,f.mats); S.food={id, left:mealBattles(f)}; G.S.chars.forEach(fixHpMp); return true; }
-function mentorLessonCost(c){ const jt=c.jobs[c.job]; const spent=D.JOBS[c.job].tree.filter(n=>jt.nodes[n.id]).length; return 30*Math.pow(2,spent); }
-function mentorLesson(ci){ const c=G.S.chars[ci]; if(!c.job||!mentorHere(c.job)) return false; const cost=mentorLessonCost(c); if(G.S.gold<cost) return false; G.S.gold-=cost; c.jobs[c.job].jp+=5; return true; }
 
-/* ---------------- materials: where to get ---------------- */
+/* ---------------- market ---------------- */
+function sellBonus(){ return 1+Math.min(40,G.S.profs.smithing.lv)/100 + 0.05*G.S.buildings.market; }
+function sellPrice(u){ const it=defOf(u); if(u.relic) return 0; return Math.max(1, Math.floor((it.price||Math.round(20*Math.pow(2.1,it.tier)))*0.4*D.RARITY[u.r||0].sell*sellBonus())); }
+function shopItems(){ return D.ITEMS.filter(it=>it.shop && it.shop<=G.S.buildings.market); }
+function buyPrice(it){ return Math.ceil(it.price*3); }
+function buyItem(id){ const it=D.ITEM[id], p=buyPrice(it), S=G.S; if(!it.shop||it.shop>S.buildings.market||S.gold<p) return false; S.gold-=p; addItem(id); S.stats.bought++; return true; }
+function sellItem(uid){ const S=G.S; const i=S.inv.findIndex(x=>x.uid===uid); if(i<0||S.inv[i].relic||equippedBy(uid)>=0) return 0; const g=sellPrice(S.inv[i]); S.inv.splice(i,1); S.gold+=g; return g; }
+function isMastered(u){ const it=defOf(u); return !u.relic && it.skills.every(s=>G.S.chars.every(c=>c.learned[s])); }
+function bulkSellMastered(){ let g=0,n=0; for(const u of [...G.S.inv]) if(equippedBy(u.uid)<0 && isMastered(u)){ g+=sellItem(u.uid); n++; } return {g,n}; }
+function sellMats(){ const S=G.S; let g=0; for(const m in D.MATS){ if(!D.MATS[m].gem) continue; const n=S.mats[m]||0; if(n){ g+=n*D.MATS[m].sell; S.mats[m]=0; } } S.gold+=g; return g; }
+
+/* ---------------- stamina, training, mentors (in town) ---------------- */
+function stamRegenSec(c){ return D.STAM.regenSec/(1+D.STAM.regenPerLv*(c.endLv-1)); }
+function enduranceCap(){ return 5*G.S.buildings.training; }
+function mentorAvailable(mid){ const m=D.MENTOR[mid]; const L=G.S.buildings[m.place]; return m.need<=1 ? L>=1 : L>=3; }
+function mentorNeedLv(mid){ const m=D.MENTOR[mid]; return m.need<=1?1:3; }
+function setAct(ci, act){ const c=G.S.chars[ci]; if(act.startsWith('m:') && !mentorAvailable(act.slice(2))) return false; if(act==='train' && c.endLv>=enduranceCap()) return false;
+  if(act.startsWith('m:') && mentorRank(c,act.slice(2))>=D.MENTOR_MAX) return false; c.act=act; return true; }
+function tickTown(dt){
+  const S=G.S; if(S.loc!=='town') return;
+  for(const c of S.chars){
+    const ms=maxStam(c); const rate=(c.act==='rest'?D.STAM.restMult:1)/stamRegenSec(c);
+    if(c.stam<ms){ c.stam=Math.min(ms, c.stam+dt*rate); }
+    const d=calcBase(c); c.hp=d.maxHp; c.mp=d.maxMp;
+    if(c.act==='train'){ if(c.endLv>=enduranceCap()){ c.act='rest'; continue; } c.endXp+=dt*(1+0.1*(S.buildings.training-1));
+      while(c.endXp>=enduranceNeed(c.endLv) && c.endLv<enduranceCap()){ c.endXp-=enduranceNeed(c.endLv); c.endLv++; dirty(); log(`🎯 ${c.name}'s Endurance is now ${c.endLv} (max stamina ${maxStam(c)}).`,'good'); toast(`🎯 ${c.name}: Endurance ${c.endLv}`,'good'); if(G.sum) G.sum.notes.push(`${c.name}: Endurance ${c.endLv}`); } }
+    else if(c.act.startsWith('m:')){ const mid=c.act.slice(2), m=D.MENTOR[mid]; if(!mentorAvailable(mid)){ c.act='rest'; continue; }
+      const st=c.mentors[mid]=c.mentors[mid]||{rank:0, xp:0}; if(st.rank>=D.MENTOR_MAX){ c.act='rest'; continue; }
+      st.xp+=dt; while(st.xp>=mentorNeed(st.rank) && st.rank<D.MENTOR_MAX){ st.xp-=mentorNeed(st.rank); st.rank++; dirty(); fixHpMp(c);
+        const j=D.JOBS[m.job]; const msg = st.rank===1 ? `${c.name} can now take ${j.icon} ${j.name} as a subjob.` : (st.rank===3 && j.adv) ? `${c.name} can now become a ${j.icon} ${j.name}!` : `${c.name} reached rank ${st.rank} with ${m.name}.`;
+        log(`🎓 ${msg}`,'learn'); toast(`🎓 ${msg}`,'learn'); if(G.sum) G.sum.notes.push(msg); } }
+  }
+}
+
+/* ---------------- sources (for the "where to get it" UI) ---------------- */
 function matSources(m){
   const out=[];
-  D.ZONES.forEach((z,zi)=>{ for(const e of [...z.enemies, z.boss]) for(const [d,p] of e.drops) if(d===m) out.push({kind:'enemy', text:`${e.icon} ${e.name}${e.boss?' (boss)':''} — ${z.name}`, p, zi}); });
-  if(m==='stone') out.unshift({kind:'prof', text:'🧱 Masonry worker (Village) — automatic'});
-  if(m==='herb') out.unshift({kind:'prof', text:'⚗️ Alchemy worker (Village) — automatic'});
+  for(const p of D.PROF_ORDER) for(const o of D.PROFS[p].out) if(o[0]===m){ const z=o[4]?` once ${D.ZONES[o[4]].name} is open`:''; out.push({kind:'prof', text:`${D.PROFS[p].icon} ${D.PROFS[p].name} worker (Town Hall) — from Lv ${o[3]}${z}`}); }
   return out;
 }
 function itemSources(id){
   const out=[]; const it=D.ITEM[id];
-  if(it.shop===1) out.push({text:`⚒️ Smithy basic gear (Common)`});
-  for(const b of D.BANNER_ORDER) if(it.skills.some(x=>D.SKILLS[x].type===D.BANNERS[b].type)) out.push({text:`💎 ${D.BANNERS[b].icon} ${D.BANNERS[b].name} pulls (hall Lv ${it.tier+1}+, ${D.ZONES[it.tier].name} opened)`});
-  D.ZONES.forEach(z=>{ for(const e of [...z.enemies, z.boss]) for(const [d,p] of e.drops) if(d===id) out.push({text:`${e.icon} ${e.name}${e.boss?' (boss)':''} — ${z.name}`, p}); });
+  if(it.shop) out.push({text:`⚖️ Market (Lv ${it.shop}+) — Common, ${buyPrice(it)} gold`});
+  for(const b of D.BANNER_ORDER) if(it.skills.some(x=>D.SKILLS[x].type===D.BANNERS[b].type)) out.push({text:`💎 ${D.BANNERS[b].icon} ${D.BANNERS[b].name} pulls (hall Lv ${it.tier+1}+, ${D.ZONES[it.tier].name} reached)`});
+  out.push({text:`⚒️ Smithing worker now and then forges a Common one (Smithing Lv ${it.tier*6}+)`});
   return out;
 }
 function skillSources(sid){ const out=[]; D.ITEMS.forEach(it=>{ if(it.skills.includes(sid)) out.push(it); }); D.RELICS.forEach(r=>{ if(r.skill===sid) out.push(Object.assign({relicDef:1}, r)); }); return out; }
 
-/* ---------------- bestiary ---------------- */
+/* ---------------- bestiary & collection ---------------- */
 function beastTier(eid){ const k=G.S.bestiary[eid]||0, lib=G.S.buildings.library; let t=0; D.BEAST_TIERS.forEach((x,i)=>{ if(i>0 && k>=x.kills && lib>=x.lib) t=i; }); return t; }
 function beastTierByKills(eid){ const k=G.S.bestiary[eid]||0; let t=0; D.BEAST_TIERS.forEach((x,i)=>{ if(i>0 && k>=x.kills) t=i; }); return t; }
+function addKill(eid, n, study){ const S=G.S; const before=beastTier(eid); S.bestiary[eid]=(S.bestiary[eid]||0)+n; checkBeast(eid, before); }
+function checkBeast(eid, before){ const S=G.S; const t=beastTier(eid); if(t<=before) return; const def=findEnemyDef(eid);
+  for(let k=before+1;k<=t;k++){ const T=D.BEAST_TIERS[k]; const key=eid+':'+k; if(S.beastRewards[key]) continue; S.beastRewards[key]=1;
+    let msg=`📚 Bestiary: ${def.name} is now ${T.label.split(' —')[0]}.`; if(T.dia){ gain('diamond', T.dia); msg+=` +${T.dia} 💎`; }
+    log(msg,'good'); toast(msg,'good'); }
+  checkCollections(); }
+function recheckBeasts(){ for(const eid in G.S.bestiary) checkBeast(eid, 0); }
+function zoneCollection(zi){ const S=G.S, Z=D.ZONES[zi];
+  const foes=Z.enemies.map(e=>({e, t:beastTier(e.id), k:S.bestiary[e.id]||0, gilded:!!S.variants[e.id]}));
+  const done = foes.every(f=>f.t>=3) && foes.every(f=>f.gilded) && S.zones[zi].boss;
+  const relic=D.RELICS.find(r=>r.zone===zi);
+  return {foes, boss:S.zones[zi].boss, done, relic, got:relic && S.relicsFound[relic.id]}; }
+function checkCollections(){ const S=G.S; D.ZONES.forEach((z,zi)=>{ const c=zoneCollection(zi); if(c.done && c.relic && !c.got){ addRelic(c.relic.id); S.relicsFound[c.relic.id]=1; S.stats.relics++;
+  log(`💠 Collection complete: ${z.name}! The Library awards ${c.relic.icon} ${c.relic.name}.`,'relic'); toast(`💠 RELIC: ${c.relic.icon} ${c.relic.name} — ${z.name} collection complete!`,'relic'); emit({t:'relic', id:c.relic.id}); if(G.sum) G.sum.items.push('💠 '+c.relic.name); } }); }
 function enemyStats(e, zi){
-  const r=D.ROLES[e.role], P=D.ZP; const b=e.boss?{hp:5,atk:1.25,def:1.2,agi:1.1,xp:8,gold:10}:{hp:1,atk:1,def:1,agi:1,xp:1,gold:1};
-  const st = {hp:Math.max(3,Math.round(P.hp[zi]*r.hp*b.hp)), atk:Math.max(2,Math.round(P.atk[zi]*r.atk*b.atk)), def:Math.round(P.def[zi]*r.def*b.def), agi:Math.max(1,Math.round(P.agi[zi]*r.agi*b.agi)),
+  const r=D.ROLES[e.role], P=D.ZP; const b=e.boss?{hp:4.5,atk:1.25,def:1.2,agi:1.1,xp:8,gold:10}:{hp:1,atk:1,def:1,agi:1,xp:1,gold:1};
+  return {hp:Math.max(3,Math.round(P.hp[zi]*r.hp*b.hp)), atk:Math.max(2,Math.round(P.atk[zi]*r.atk*b.atk)), def:Math.round(P.def[zi]*r.def*b.def), agi:Math.max(1,Math.round(P.agi[zi]*r.agi*b.agi)),
     mag:r.mag?Math.round(P.atk[zi]*r.mag*b.atk):0, xp:Math.round(P.xp[zi]*(r.hp+r.atk)/2*b.xp), gold:Math.max(1,Math.round(P.gold[zi]*b.gold))};
-  return st;
 }
 
 /* ---------------- battle ---------------- */
-function bossReady(zi){ const z=G.S.zones[zi]; return (!z.boss && z.wins>=D.ZONES[zi].wins) || (z.boss && z.sinceBoss>=25); }
-function zoneUnlocked(zi){ return zi===0 || G.S.zones[zi-1].boss; }
-function spawn(zi, boss){
-  const Z=D.ZONES[zi]; const list = boss ? [Z.boss] : (()=>{ const n = zi===0 ? (chance(.15)?3:chance(.5)?2:1) : (chance(.3)?3:chance(.6)?2:1); const a=[]; for(let i=0;i<n;i++) a.push(pick(Z.enemies)); return a; })();
-  const cnt={};
-  return list.map((e,i)=>{ const st=enemyStats(e,zi); const t=beastTier(e.id), red=D.BEAST_TIERS[t].red;
-    const same=list.filter(x=>x.id===e.id).length>1; cnt[e.id]=(cnt[e.id]||0)+1;
-    return {id:e.id, name:e.name+(same?' '+'ABC'[cnt[e.id]-1]:''), icon:e.icon, hat:e.hat, weak:e.weak, boss:!!e.boss, role:e.role, zi,
-      hp:st.hp, maxHp:st.hp, atk:Math.max(1,Math.round(st.atk*(1-red))), def:Math.round(st.def*(1-red)), agi:Math.max(1,Math.round(st.agi*(1-red))), mag:Math.round(st.mag*(1-red)),
-      xp:st.xp, gold:st.gold, poison:null, stun:0, deb:{}, idx:i};
-  });
-}
-function startBattle(boss){
-  const S=G.S; const zi=S.zone;
-  S.battle = {zi, boss:!!boss, enemies:spawn(zi, boss), round:0, queue:[], buffs:{}, cs:S.chars.map(()=>({used:{}})), done:false};
-  const names = S.battle.enemies.map(e=>e.name);
-  log(boss ? `⚠️ ${names[0]} blocks the path!` : (names.length===1? `${names[0]} appears!` : `${names.join(', ')} appear!`), boss?'boss':'');
-  emit({t:'start'});
-}
 function living(){ return G.S.chars.map((c,i)=>({c,i})).filter(x=>x.c.hp>0); }
 function liveEnemies(){ return G.S.battle.enemies.filter(e=>e.hp>0); }
 function newRound(){
@@ -303,7 +347,7 @@ function playerTurn(ci, extra){
   const useSkill=(k, target)=>{ c.mp-=k.cost; return doSkill(ci, d, k.id, target); };
   // 1) revive the fallen
   if(ko.length){ const rv=skills.find(k=>k.s.eff.revive||k.s.eff.reviveAll); if(rv){ useSkill(rv, ko[0].i); return; }
-    if(S.settings.usePots && (S.pots.phoenix_down||0)>0 && !cs.used.down){ cs.used.down=1; S.pots.phoenix_down--; const t=S.chars[ko[0].i]; t.hp=Math.max(1,Math.round(calc(t).maxHp*.5)); log(`${c.name} uses a Phoenix Down! ${t.name} is revived.`,'heal'); emit({t:'healP',i:ko[0].i,amt:t.hp}); return; } }
+  }
   // 2) heal
   const healThr = c.tactic==='heal' ? .65 : .45;
   const hurt = party.filter(o=>{ const md=calc(o.c,B.buffs); return o.c.hp < md.maxHp*healThr; }).sort((a,b)=>a.c.hp/calc(a.c).maxHp - b.c.hp/calc(b.c).maxHp);
@@ -313,12 +357,7 @@ function playerTurn(ci, extra){
     if(one.length){ useSkill(one[0], hurt[0].i); return; }
     if(aoe.length){ useSkill(aoe[0]); return; }
   }
-  // 3) potion for self
-  if(S.settings.usePots && c.hp < d.maxHp*.35 && !cs.used.pot2){ const pid=(S.pots.hi_potion>0&&d.maxHp-c.hp>14)?'hi_potion':(S.pots.potion>0?'potion':(S.pots.hi_potion>0?'hi_potion':null));
-    if(pid){ cs.used.pot2=(cs.used.pot2||0)+0; cs.potN=(cs.potN||0)+1; if(cs.potN>=3) cs.used.pot2=1; S.pots[pid]--; const h=healChar(ci, D.POTION[pid].use.heal); log(`${c.name} drinks a ${D.POTION[pid].name}. +${h} HP.`,'heal'); return; } }
-  // 4) ether
   const allSk=usableSkills(c,d); const caster=allSk.some(k=>k.s.eff.spell||k.s.eff.heal);
-  if(S.settings.usePots && caster && c.mp<2 && (S.pots.ether||0)>0 && !cs.used.ether && c.tactic!=='attack'){ cs.used.ether=1; S.pots.ether--; c.mp=Math.min(d.maxMp, c.mp+5); log(`${c.name} drinks an Ether. +5 MP.`,'heal'); return; }
   // 5) skills
   if(c.tactic!=='attack' && skills.length){
     const healerReserve = allSk.some(k=>k.s.eff.heal) ? 2 : 0;
@@ -386,9 +425,7 @@ function doSkill(ci, d, sid, target){
 }
 function stealFrom(ci, e){
   const S=G.S, c=S.chars[ci]; if(e.stolen){ log(`${e.name} has nothing left to steal.`); return; }
-  if(chance(.55)){ e.stolen=1; const def=findEnemyDef(e.id); const mats=def.drops.filter(([d])=>D.MATS[d]);
-    if(mats.length && chance(.6)){ const m=pick(mats)[0]; S.mats[m]=(S.mats[m]||0)+1; log(`${c.name} steals ${D.MATS[m].icon} ${D.MATS[m].name}!`,'good'); }
-    else { const g=Math.max(1,Math.round(e.gold*1.5)); S.gold+=g; S.stats.goldEarned+=g; log(`${c.name} steals ${g} gold!`,'good'); } }
+  if(chance(.55)){ e.stolen=1; const g=Math.max(1,Math.round(e.gold*1.5)); S.gold+=g; S.stats.goldEarned+=g; if(S.exp) S.exp.gold+=g; log(`${c.name} pinches ${g} gold!`,'good'); }
   else log(`${c.name} couldn't steal anything.`,'miss');
 }
 const _edef={}; function findEnemyDef(id){ if(_edef[id]) return _edef[id]; for(const z of D.ZONES) for(const e of [...z.enemies,z.boss]) if(e.id===id) return (_edef[id]=e); }
@@ -428,101 +465,127 @@ function hurtChar(ci, d, dmg, e){
     log(`${c.name} is knocked out!`,'ko'); emit({t:'koP', i:ci});
   }
 }
-// one action. returns ms until next action (scaled by caller)
+
+/* ---------------- expeditions ----------------
+   The game opens in town. The player picks a zone and sets out; battles only happen on an expedition.
+   Each battle costs stamina. When anyone is out of stamina (or the party falls) everyone walks home to rest. */
+function bossReady(zi){ const z=G.S.zones[zi]; return (!z.boss && z.wins>=D.ZONES[zi].wins) || (z.boss && z.sinceBoss>=40); }
+function zoneUnlocked(zi){ return zoneOpen(zi); }
+function maxZoneOpen(){ let m=0; D.ZONES.forEach((z,i)=>{ if(zoneOpen(i)) m=i; }); return m; }
+function partyStam(){ return Math.min(...G.S.chars.map(c=>c.stam)); }
+function canDepart(){ const S=G.S; if(S.loc!=='town') return {ok:false, why:'Already out'}; const low=S.chars.filter(c=>c.stam<D.STAM.minDepart);
+  if(low.length) return {ok:false, why:`${low.map(c=>c.name).join(', ')} need${low.length>1?'':'s'} at least ${D.STAM.minDepart} stamina`}; return {ok:true}; }
+function depart(zi, boss){ const S=G.S; if(!zoneOpen(zi)) return false; const a=canDepart(); if(!a.ok) return false;
+  S.zone=zi; S.loc='exp'; S.exp={zi, battles:0, wins:0, gold:0, xp:0, start:Date.now()}; S.battle=null; S.pause=PACE.start; S.pendingBoss=!!boss && bossReady(zi);
+  // eat the best meal in the larder
+  S.food=null; const meal=[...D.FOODS].reverse().find(f=>(S.meals[f.id]||0)>0); if(meal){ S.meals[meal.id]--; S.food=meal.id; log(`${meal.icon} The party eats ${meal.name} (${meal.desc}).`,'good'); }
+  S.chars.forEach(c=>{ const d=calcBase(c); c.hp=d.maxHp; c.mp=d.maxMp; });
+  dirty(); S.stats.departs++; log(`🔥 The party sets out for ${D.ZONES[zi].name}.`,'good'); emit({t:'depart'}); return true; }
+function goHome(reason){ const S=G.S; if(S.loc!=='exp') return; const e=S.exp||{};
+  S.loc='town'; S.battle=null; S.pendingBoss=false; S.pause=0; S.food=null; S.stats.returns++;
+  S.lastExp=Object.assign({}, e, {reason, end:Date.now(), zi:S.zone});
+  const msg = reason==='wipe' ? '💀 The party fell. Villagers carried everyone home to Lanternfall.' : reason==='tired' ? '😮‍💨 The party is out of stamina and walks home to rest.' : '🏠 The party returns to Lanternfall.';
+  log(msg, reason==='wipe'?'ko':'good'); toast(msg, reason==='wipe'?'bad':'good');
+  S.chars.forEach(c=>{ if(c.act!=='train' && !c.act.startsWith('m:')) c.act='rest'; });
+  dirty(); S.chars.forEach(c=>{ const d=calcBase(c); c.hp=d.maxHp; c.mp=d.maxMp; }); emit({t:'home', reason}); if(G.sum) G.sum.home=reason; }
+function challengeBoss(zi){ const S=G.S; if(!zoneOpen(zi)||!bossReady(zi)) return false; if(S.loc==='town') return depart(zi, true); if(S.zone!==zi) return false; S.pendingBoss=true; return true; }
+function spawn(zi, boss){
+  const Z=D.ZONES[zi]; const list = boss ? [Z.boss] : (()=>{ const n = zi===0 ? (chance(.12)?3:chance(.45)?2:1) : (chance(.25)?3:chance(.55)?2:1); const a=[]; for(let i=0;i<n;i++) a.push(pick(Z.enemies)); return a; })();
+  const cnt={};
+  return list.map((e,i)=>{ const st=enemyStats(e,zi); const t=beastTier(e.id), red=D.BEAST_TIERS[t].red;
+    const gild = !e.boss && chance(D.VARIANT_CHANCE);
+    const same=list.filter(x=>x.id===e.id).length>1; cnt[e.id]=(cnt[e.id]||0)+1;
+    const hp=Math.round(st.hp*(gild?2:1));
+    return {id:e.id, name:(gild?'Gilded ':'')+e.name+(same?' '+'ABC'[cnt[e.id]-1]:''), icon:e.icon, hat:e.hat, weak:e.weak, boss:!!e.boss, gild, role:e.role, zi,
+      hp, maxHp:hp, atk:Math.max(1,Math.round(st.atk*(1-red))), def:Math.round(st.def*(1-red)), agi:Math.max(1,Math.round(st.agi*(1-red))), mag:Math.round(st.mag*(1-red)),
+      xp:st.xp*(gild?3:1), gold:st.gold*(gild?3:1), poison:null, stun:0, deb:{}, idx:i};
+  });
+}
+function startBattle(boss){
+  const S=G.S; const zi=S.zone;
+  S.battle = {zi, boss:!!boss, enemies:spawn(zi, boss), round:0, queue:[], buffs:{}, cs:S.chars.map(()=>({used:{}})), done:false};
+  const names = S.battle.enemies.map(e=>e.name);
+  log(boss ? `⚠️ ${names[0]} blocks the path!` : (names.length===1? `${names[0]} appears!` : `${names.join(', ')} appear!`), boss?'boss':'');
+  if(S.battle.enemies.some(e=>e.gild)){ log('✨ A rare Gilded foe!','rare'); toast('✨ A Gilded foe appeared!','rare'); }
+  emit({t:'start'});
+}
+// one action. returns ms until the next one
 function step(){
   const S=G.S;
-  if(!S.started || S.wiped) return 0;
-  if(S.rest>0) return 0;
-  if(!S.battle){ startBattle(S.settings.autoBoss && bossReady(S.zone) || S.pendingBoss); S.pendingBoss=false; return 700; }
+  if(!S.started || S.loc!=='exp') return 0;
+  if(!S.battle){
+    const boss = S.pendingBoss || (S.settings.autoBoss && bossReady(S.zone));
+    const cost = boss ? D.STAM.boss : D.STAM.battle;
+    if(S.chars.some(c=>c.stam < cost)){ if(boss && !S.chars.some(c=>c.stam<D.STAM.battle)){ S.pendingBoss=false; log('Too tired to face the boss; fighting on.'); } else { goHome('tired'); return 0; } }
+    const b2 = S.pendingBoss || (S.settings.autoBoss && bossReady(S.zone)); const c2 = b2?D.STAM.boss:D.STAM.battle;
+    S.pendingBoss=false; S.chars.forEach(c=>{ c.stam=Math.max(0, c.stam-c2); });
+    startBattle(b2); S.battle.t0=S.stats.play; return PACE.start;
+  }
   const B=S.battle;
-  if(!B.queue.length) newRound();
-  const a=B.queue.shift();
-  if(a){ if(a.side==='p'){ if(S.chars[a.i].hp>0) playerTurn(a.i, a.haste); } else enemyTurn(a.i); }
-  if(!liveEnemies().length){ victory(); return 1100; }
+  let a=null, g=0;
+  while(g++<20){ if(!B.queue.length) newRound(); a=B.queue.shift(); if(!a) continue; if(a.side==='p' ? S.chars[a.i].hp>0 : B.enemies[a.i].hp>0) break; a=null; }
+  if(a){ if(a.side==='p') playerTurn(a.i, a.haste); else enemyTurn(a.i); }
+  if(!liveEnemies().length){ victory(); return PACE.between; }
   if(!living().length){ defeat(); return 0; }
-  return 600;
+  return PACE.action;
 }
+function levelUp(c, i){ let n=0; while(c.xp>=xpNeed(c.lv) && c.lv<MAX_LV){ c.xp-=xpNeed(c.lv); c.lv++; n++; const t=D.RACES[c.race].traits.find(t=>t.lv===c.lv);
+    log(`⬆️ ${c.name} is now level ${c.lv}!`,'level'); emit({t:'lvl', i}); if(t){ log(`🧬 ${c.name} gains the ${D.RACES[c.race].name} trait “${t.name}”!`,'good'); toast(`🧬 ${c.name}: new racial trait ${t.name}`,'good'); }
+    if(G.sum) G.sum.levels++; } if(n) dirty(); }
 function victory(){
   const S=G.S, B=S.battle; const zi=B.zi; const Z=D.ZONES[zi];
-  let xp=0, gold=0; B.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; S.bestiary[e.id]=(S.bestiary[e.id]||0)+1; S.stats.kills++; });
+  let xp=0, gold=0; B.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; addKill(e.id, 1); S.stats.kills++; if(e.gild){ const first=!S.variants[e.id]; S.variants[e.id]=(S.variants[e.id]||0)+1; if(first){ log(`📚 First Gilded ${findEnemyDef(e.id).name} recorded in the bestiary!`,'rare'); checkCollections(); } } });
   const ds=S.chars.map(c=>calc(c,B.buffs));
-  const goldB = Math.min(1.5, ds.reduce((a,d)=>a+(d.f.gold||0),0));
   const midas = ds.some(d=>d.f.gold>=1);
-  gold = Math.round(gold*(1+Math.min(1,goldB- (midas?1:0)))*(midas?2:1)*rnd(.8,1.2));
-  const matF = 1+Math.max(...ds.map(d=>d.f.matFind||0)) + (midas?1:0);
-  const dropF = 1+Math.max(...ds.map(d=>d.f.dropFind||0)) + (midas?1:0);
-  S.gold+=gold; S.stats.goldEarned+=gold; S.stats.wins++; S.stats.battles++;
+  const goldB = Math.min(1, ds.reduce((a,d)=>a+(d.f.gold||0),0) - (midas?1:0));
+  gold = Math.max(1, Math.round(gold*(1+goldB)*(midas?2:1)*rnd(.85,1.15)));
+  S.gold+=gold; S.stats.goldEarned+=gold; S.stats.wins++; S.stats.battles++; S.stats.rounds+=B.round;
+  if(S.exp){ S.exp.wins++; S.exp.battles++; S.exp.gold+=gold; S.exp.xp+=xp; }
   log(`Victory! +${xp} XP, +${gold} gold.`, 'win');
-  if(G.sum){ G.sum.wins++; G.sum.gold+=gold; G.sum.xp+=xp; }
-  // drops
-  for(const e of B.enemies){ const def=findEnemyDef(e.id);
-    for(const [d,p] of def.drops){
-      if(D.MATS[d]){ if(chance(Math.min(1,p*matF))){ const n=e.boss?ri(2,4):1; S.mats[d]=(S.mats[d]||0)+n; log(`Found ${D.MATS[d].icon} ${D.MATS[d].name}${n>1?' ×'+n:''}.`,'loot'); if(G.sum) G.sum.mats[d]=(G.sum.mats[d]||0)+n; } }
-      else if(chance(Math.min(1,p*dropF))){ const r=rollRarity(e.boss?[55,30,12,2.5,0.5]:[85,12,2.6,0.35,0.05]); addItem(d, r); const it=D.ITEM[d]; const rn=r?D.RARITY[r].name+' ':''; log(`✨ Found ${rn}${it.icon} ${it.name}!`,'rare'); toast(`✨ Found ${rn}${it.icon} ${it.name}!`,'rare'); if(G.sum) G.sum.items.push(rn+it.name); }
-    }
-    // relics
-    for(const r of D.RELICS){ let odds=0; if(e.boss && r.src.boss===e.zi) odds=1/r.src.odds; else if(!e.boss && e.zi>=r.src.boss) odds=1/r.src.any;
-      if(odds && chance(odds*Math.min(1.5, dropF-(midas?1:0)))){ addRelic(r.id); S.relicsFound[r.id]=(S.relicsFound[r.id]||0)+1; S.stats.relics++; log(`💠 RELIC! ${r.icon} ${r.name}!`,'relic'); toast(`💠 RELIC FOUND: ${r.icon} ${r.name}! Equip it in Party.`,'relic'); emit({t:'relic', id:r.id}); if(G.sum) G.sum.items.push('💠 '+r.name); } }
-  }
-  { let dia = B.boss ? (S.zones[zi].boss ? 3 : 15) : (chance(0.004*dropF) ? 1 : 0);
-    if(dia){ S.diamonds+=dia; S.stats.diamondsEarned+=dia; log(`💎 +${dia} Diamond${dia>1?'s':''}!`,'relic'); if(!B.boss) toast('💎 Found a Diamond!','rare'); if(G.sum) G.sum.diamonds=(G.sum.diamonds||0)+dia; } }
-  // xp / ap / jp
+  if(G.sum){ G.sum.wins++; G.sum.gold+=gold; G.sum.xp+=xp; G.sum.battles++; }
+  if(B.boss && !S.zones[zi].boss){ gain('diamond', 10); log('💎 +10 Diamonds for the first victory over this boss!','relic'); }
+  // xp / ap / jp — fighting never drops items
   S.chars.forEach((c,i)=>{ const d=ds[i]; const alive=c.hp>0;
-    if(alive){ c.xp+=xp; while(c.xp>=xpNeed(c.lv) && c.lv<MAX_LV){ c.xp-=xpNeed(c.lv); c.lv++; const t=D.RACES[c.race].traits.find(t=>t.lv===c.lv);
-        log(`⬆️ ${c.name} is now level ${c.lv}!`,'level'); emit({t:'lvl', i}); if(t){ log(`🧬 ${c.name} gains the ${D.RACES[c.race].name} trait “${t.name}”!`,'good'); toast(`🧬 ${c.name}: new racial trait ${t.name}`,'good'); }
-        if(G.sum) G.sum.levels++; } }
+    if(alive){ c.xp+=xp; levelUp(c,i); }
     if(alive){ c.wins=(c.wins||0)+1; let ap = B.boss?3:1; if(d.f.apEvery && c.wins % d.f.apEvery===0) ap++;
       for(const u of charGear(c)) for(const sid of defOf(u).skills){ if(c.learned[sid]) continue; c.ap[sid]=(c.ap[sid]||0)+ap+(u.relic?0:D.RARITY[u.r||0].ap);
-        if(c.ap[sid]>=D.SKILLS[sid].ap){ c.learned[sid]=1; delete c.ap[sid]; S.stats.learned++; const sk=D.SKILLS[sid]; log(`🎉 ${c.name} learned ${sk.name}!`,'learn'); toast(`🎉 ${c.name} learned ${D.TYPES[sk.type].icon} ${sk.name}!`,'learn'); if(G.sum) G.sum.learned.push(c.name+': '+sk.name);
+        if(c.ap[sid]>=D.SKILLS[sid].ap){ c.learned[sid]=1; delete c.ap[sid]; S.stats.learned++; dirty(); const sk=D.SKILLS[sid]; log(`🎉 ${c.name} learned ${sk.name}!`,'learn'); toast(`🎉 ${c.name} learned ${D.TYPES[sk.type].icon} ${sk.name}!`,'learn'); if(G.sum) G.sum.learned.push(c.name+': '+sk.name);
           for(const jid of D.JOB_ORDER){ if(!c.jobUnl) c.jobUnl={}; if(!c.jobUnl[jid] && jobUnlocked(c,jid)){ c.jobUnl[jid]=1; log(`🎖️ ${c.name} can now become a ${D.JOBS[jid].name}!`,'good'); toast(`🎖️ ${c.name} can become a ${D.JOBS[jid].name}! (Party → Job)`,'learn'); } } } }
-      if(c.job){ const jt=c.jobs[c.job]; jt.jp=(jt.jp||0)+(B.boss?3:1)+(mentorHere(c.job)?1:0); }
+      if(c.job){ const jt=c.jobs[c.job]; jt.jp=(jt.jp||0)+(B.boss?5:1); }
     }
-    // after-battle recovery
-    const md=calc(c); if(c.hp<=0) c.hp=1; else c.hp=Math.min(md.maxHp, c.hp+(d.f.postHeal||0)); c.mp=Math.min(md.maxMp, c.mp+1);
+    const md=calcBase(c); if(c.hp<=0) c.hp=1; else c.hp=Math.min(md.maxHp, c.hp+Math.round(md.maxHp*.15)+(d.f.postHeal||0)); c.mp=Math.min(md.maxMp, c.mp+1);
   });
-  // zone progress
-  const z=S.zones[zi]; z.wins++; if(z.boss) z.sinceBoss++;
+  const z=S.zones[zi]; if(!B.boss){ z.wins++; if(z.boss) z.sinceBoss++; }
   if(B.boss){ S.stats.bosses++; z.bossKills++; z.sinceBoss=0;
-    if(!z.boss){ z.boss=true; log(`🏆 ${Z.boss.name} is defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' is now open.':'You have conquered Lanternfall!'}`,'boss'); toast(`🏆 Boss defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' unlocked (Map).':''}`,'relic'); if(G.sum) G.sum.notes.push('Beat '+Z.boss.name); } }
-  // buffs tick
-  if(S.food){ if(--S.food.left<=0){ log(`Your meal wore off.`); S.food=null; S.chars.forEach(fixHpMp); } }
-  if(S.elixir){ if(--S.elixir.left<=0){ log(`Your elixir wore off.`); S.elixir=null; S.chars.forEach(fixHpMp); } }
+    if(!z.boss){ z.boss=true; dirty(); log(`🏆 ${Z.boss.name} is defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' is now open.':'You have conquered Lanternfall!'}`,'boss'); toast(`🏆 Boss defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' is open on the Map.':''}`,'relic'); if(G.sum) G.sum.notes.push('Beat '+Z.boss.name); checkCollections(); } }
   S.battle=null; emit({t:'win'});
-  // camp rest
-  const tot=S.chars.reduce((a,c)=>a+c.hp,0), max=S.chars.reduce((a,c)=>a+calc(c).maxHp,0);
-  if(S.settings.autoRest && (tot/max<.5 || S.chars.some(c=>c.hp/calc(c).maxHp<.25))){ S.rest=6; log('⛺ The party makes camp to rest…'); }
 }
-function finishRest(){ const S=G.S; S.rest=0; S.chars.forEach(c=>{ const d=calc(c); c.hp=d.maxHp; c.mp=d.maxMp; }); log('The party is rested and ready.','good'); }
-function defeat(){
-  const S=G.S; S.stats.losses++; S.battle=null; S.wiped=true; S.auto=false; S.rest=0;
-  log('💀 The party has fallen… villagers carry everyone home.','ko'); emit({t:'wipe'});
-  S.chars.forEach(c=>{ const d=calc(c); c.hp=d.maxHp; c.mp=d.maxMp; });
-  if(G.sum) G.sum.wiped=true;
-}
-function resume(){ const S=G.S; S.wiped=false; S.auto=true; S.chars.forEach(c=>{ const d=calc(c); c.hp=Math.max(c.hp,1); }); }
-function setZone(zi){ const S=G.S; if(!zoneUnlocked(zi)) return false; S.zone=zi; S.battle=null; S.rest=0; log(`🗺️ The party travels to ${D.ZONES[zi].name}.`); return true; }
-function challengeBoss(zi){ const S=G.S; if(!zoneUnlocked(zi)||!bossReady(zi)) return false; S.zone=zi; S.battle=null; S.rest=0; S.pendingBoss=true; if(S.wiped) resume(); S.auto=true; return true; }
+function defeat(){ const S=G.S; S.stats.losses++; S.stats.battles++; S.battle=null; if(S.exp) S.exp.battles++; if(G.sum) G.sum.wiped=true; emit({t:'wipe'}); goHome('wipe'); }
 
 /* ---------------- equip ---------------- */
 function equip(ci, uid){ const S=G.S, c=S.chars[ci], u=invItem(uid); if(!u) return false; const slot=defOf(u).slot;
-  const o=equippedBy(uid); if(o>=0){ const oc=S.chars[o]; for(const s in oc.equip) if(oc.equip[s]===uid) oc.equip[s]=null; fixHpMp(oc); }
-  c.equip[slot]=uid; fixHpMp(c); return true; }
-function unequip(ci, slot){ const c=G.S.chars[ci]; c.equip[slot]=null; fixHpMp(c); }
+  const o=equippedBy(uid); if(o>=0){ const oc=S.chars[o]; for(const s in oc.equip) if(oc.equip[s]===uid) oc.equip[s]=null; dirty(); fixHpMp(oc); }
+  c.equip[slot]=uid; dirty(); fixHpMp(c); return true; }
+function unequip(ci, slot){ const c=G.S.chars[ci]; c.equip[slot]=null; dirty(); fixHpMp(c); }
+function autoEquipLearn(){
+  const S=G.S; let n=0;
+  S.chars.forEach((c,ci)=>{ for(const slot of ['weapon','armor','acc']){
+    const cur=c.equip[slot]!=null?invItem(c.equip[slot]):null;
+    if(cur && defOf(cur).skills.some(s=>!c.learned[s])) continue;
+    const cand=S.inv.filter(u=>!u.relic && D.ITEM[u.id].slot===slot && equippedBy(u.uid)<0 && D.ITEM[u.id].skills.some(s=>!c.learned[s]))
+      .sort((a,b)=>(D.ITEM[b.id].tier+(b.r||0)*.5)-(D.ITEM[a.id].tier+(a.r||0)*.5));
+    if(cand.length){ equip(ci, cand[0].uid); n++; }
+  } });
+  return n;
+}
 
 /* ---------------- gacha ---------------- */
-function maxZoneOpen(){ let m=0; D.ZONES.forEach((z,i)=>{ if(zoneUnlocked(i)) m=i; }); return m; }
-function bannerTierCap(b){ const L=G.S.banners[b]; return Math.max(0, Math.min(L-1, maxZoneOpen())); }
+function bannerTierCap(b){ const L=G.S.buildings[b]; return Math.max(0, Math.min(L-1, maxZoneOpen())); }
 function bannerPool(b){ const t=D.BANNERS[b].type, cap=bannerTierCap(b); return D.ITEMS.filter(it=>it.tier<=cap && it.skills.some(s=>D.SKILLS[s].type===t)); }
-function bannerRates(b, L){ L=L==null?G.S.banners[b]:L; return D.BANNER_RATES[Math.max(1,Math.min(D.BMAX,L))]; }
-function bannerCost(b){ const L=G.S.banners[b]+1; if(L>D.BMAX) return null; const c=D.BANNER_COST[L]; const mats={}; if(c.stone) mats.stone=c.stone; if(L>=2){ const x=D.BANNER_MATS[b][L-2]; mats[x]=(mats[x]||0)+2*L; } return {lv:L, prof:c.prof, gold:c.gold, mats}; }
-function canBuildBanner(b){ const c=bannerCost(b); if(!c) return {ok:false, why:'Max level'}; const S=G.S; const miss=[];
-  if(S.profs.masonry.lv<c.prof) miss.push(`Masonry Lv ${c.prof}`); if(S.gold<c.gold) miss.push(`${c.gold} gold`);
-  for(const m in c.mats) if((S.mats[m]||0)<c.mats[m]) miss.push(`${c.mats[m]} ${D.MATS[m].name}`); return {ok:!miss.length, why:miss.join(', ')}; }
-function buildBanner(b){ const a=canBuildBanner(b); if(!a.ok) return false; const c=bannerCost(b), S=G.S; pay(c.gold, c.mats); S.banners[b]=c.lv;
-  log(`🏗️ The ${D.BANNERS[b].name} is now level ${c.lv}!`,'good'); toast(`🏗️ ${D.BANNERS[b].name} Lv ${c.lv}: better pull rates`,'good'); return true; }
+function bannerRates(b, L){ L=L==null?G.S.buildings[b]:L; return D.BANNER_RATES[Math.max(1,Math.min(D.BMAX,L))]; }
 function rollRarity(rates, minR){ let x=Math.random()*100, r=0; for(let i=0;i<rates.length;i++){ x-=rates[i]; if(x<=0){ r=i; break; } r=i; } return Math.max(r, minR||0); }
 function pull(b, n){
-  const S=G.S; n=n===10?10:1; const cost=n===10?D.PULL10_COST:D.PULL_COST; if(!S.banners[b]||S.diamonds<cost) return null;
+  const S=G.S; n=n===10?10:1; const cost=n===10?D.PULL10_COST:D.PULL_COST; if(!S.buildings[b]||S.diamonds<cost) return null;
   S.diamonds-=cost; const pool=bannerPool(b), cap=bannerTierCap(b), rates=bannerRates(b); const out=[];
   for(let i=0;i<n;i++){
     S.pity[b]=(S.pity[b]||0)+1; let minR=0;
@@ -536,64 +599,48 @@ function pull(b, n){
   }
   return out;
 }
-// Smithy fusing: 3 unworn copies of the same item & rarity -> 1 of the next rarity
-function fuseLimit(){ return Math.min(4, Math.floor(G.S.buildings.smithy/2)); } // highest rarity index you can fuse INTO
-function fuseCost(r){ return 25*Math.pow(3,r); }
+// Forge fusing: 3 unworn copies of the same item & rarity -> 1 of the next rarity
+function fuseLimit(){ return Math.min(4, Math.floor(G.S.buildings.forge/2)); }
+function fuseCost(r){ return 40*Math.pow(3,r); }
 function fusable(){ const S=G.S, g={}; for(const u of S.inv){ if(u.relic||equippedBy(u.uid)>=0) continue; const k=u.id+':'+(u.r||0); (g[k]=g[k]||[]).push(u); }
   return Object.entries(g).filter(([k,a])=>a.length>=3).map(([k,a])=>({id:a[0].id, r:a[0].r||0, n:a.length, ok:(a[0].r||0)+1<=fuseLimit()&&(a[0].r||0)<4})); }
 function fuse(id, r){ const S=G.S; if(r+1>fuseLimit()) return false; const a=S.inv.filter(u=>!u.relic&&u.id===id&&(u.r||0)===r&&equippedBy(u.uid)<0); if(a.length<3||S.gold<fuseCost(r)) return false;
   S.gold-=fuseCost(r); for(const u of a.slice(0,3)) S.inv.splice(S.inv.indexOf(u),1); const nu=addItem(id, r+1); log(`⚒️ Fused 3 ${D.ITEM[id].name} into a ${D.RARITY[r+1].name} one!`,'good'); return nu; }
-function sellMats(){ const S=G.S; let g=0; for(const m of ['quartz','silver','nugget']){ const n=S.mats[m]||0; if(n){ g+=n*D.MATS[m].sell; S.mats[m]=0; } } S.gold+=g; return g; }
-// put on gear that still has skills to learn (for any slot whose current gear is fully learned)
-function autoEquipLearn(){
-  const S=G.S; let n=0;
-  S.chars.forEach((c,ci)=>{ for(const slot of ['weapon','armor','acc']){
-    const cur=c.equip[slot]!=null?invItem(c.equip[slot]):null;
-    if(cur && defOf(cur).skills.some(s=>!c.learned[s])) continue;
-    const cand=S.inv.filter(u=>!u.relic && D.ITEM[u.id].slot===slot && equippedBy(u.uid)<0 && D.ITEM[u.id].skills.some(s=>!c.learned[s]))
-      .sort((a,b)=>D.ITEM[b.id].tier-D.ITEM[a.id].tier);
-    if(cand.length){ equip(ci, cand[0].uid); n++; }
-  } });
-  return n;
-}
+
 /* ---------------- party creation ---------------- */
-function createParty(list){ const S=G.S; S.chars=list.map(x=>newChar(x.name.trim().slice(0,12)||'Hero', x.race));
-  const starter={martial:'stick', holy:'rod', arcane:'wand', shadow:'knife', wild:'sling'};
-  // each hero gets a starter weapon fitting their race, plus a tunic
+function createParty(list){ const S=G.S; S.chars=list.slice(0,3).map(x=>newChar(x.name.trim().slice(0,12)||'Hero', x.race));
   const pref={human:'stick', elf:'wand', dwarf:'stick', halfling:'knife', orc:'stick', beastkin:'sling'};
   const used=new Set();
   S.chars.forEach((c,i)=>{ let w=pref[c.race]; if(used.has(w)) w=['rod','wand','knife','sling','stick'].find(x=>!used.has(x))||w; used.add(w);
-    const u=addItem(w); c.equip.weapon=u.uid; const a=addItem('tunic'); c.equip.armor=a.uid; const d=calc(c); c.hp=d.maxHp; c.mp=d.maxMp; });
-  S.started=true; S.auto=true; log('The party sets out from the village of Lanternfall.','good');
+    const u=addItem(w); c.equip.weapon=u.uid; const a=addItem('tunic'); c.equip.armor=a.uid; dirty(); const d=calcBase(c); c.hp=d.maxHp; c.mp=d.maxMp; c.stam=d.maxStam; });
+  S.started=true; S.loc='town'; log('Three companions arrive in the village of Lanternfall.','good'); dirty();
 }
 
 /* ---------------- time ---------------- */
-let _acc=0;
 function tick(dtMs){
   const S=G.S; if(!S.started) return;
   const dt=dtMs/1000; S.stats.play+=dt;
-  tickProfs(dt);
-  if(S.rest>0){ S.rest-=dt*S.settings.speed; if(S.rest<=0) finishRest(); return; }
-  if(!S.auto || S.wiped) return;
-  _acc -= dtMs*S.settings.speed;
-  let guard=0;
-  while(_acc<=0 && guard++<5 && S.auto && !S.wiped && !(S.rest>0)){ const w=step(); _acc += w||600; }
+  tickProfs(dt); tickTown(dt);
+  if(S.loc!=='exp') return;
+  S.pause -= dtMs; let guard=0;
+  while(S.pause<=0 && guard++<6 && S.loc==='exp'){ const w=step(); S.pause += (w||PACE.action); }
+  if(S.loc!=='exp') S.pause=0;
 }
-// offline: professions run at full speed; battles simulated quickly at 50% of the online pace
-const OFFLINE_CAP = 8*3600;
+// offline: town work runs for the whole absence; an expedition keeps fighting at the normal pace until stamina runs out, then the party rests in town.
+const OFFLINE_CAP = 12*3600;
 function offline(sec){
   const S=G.S; sec=Math.min(sec, OFFLINE_CAP); if(sec<5||!S.started) return null;
-  const sum = G.sum = {sec, wins:0, gold:0, xp:0, levels:0, learned:[], items:[], mats:{}, profUps:0, wiped:false, notes:[], battles:0};
+  const sum = G.sum = {sec, wins:0, gold:0, xp:0, levels:0, learned:[], items:[], mats:{}, profUps:0, wiped:false, notes:[], battles:0, home:null, fightSec:0};
   const q=G.quiet; G.quiet=true;
   try{
-    // professions in 10s chunks
+    let t=0; const total=sec*1000; let g=0;
+    if(S.loc==='exp'){ t=Math.max(0,S.pause); S.pause=0; while(t<total && S.loc==='exp' && g++<300000){ t += (step()||PACE.action); } }
+    sum.fightSec=Math.min(sec, t/1000);
     let left=sec; while(left>0){ const c=Math.min(10,left); tickProfs(c); left-=c; }
-    if(S.auto && !S.wiped){
-      const n=Math.min(3000, Math.floor(sec/12*0.5)); S.battle=null; S.rest=0;
-      for(let b=0;b<n && !S.wiped;b++){ let g=0; startBattle(bossReady(S.zone)&&S.settings.autoBoss); while(S.battle && g++<400){ step(); if(S.wiped) break; } if(S.rest>0) finishRest(); if(S.battle){ S.battle=null; } sum.battles++; }
-    }
+    let town=sec-sum.fightSec; while(town>0 && S.loc==='town'){ const c=Math.min(10,town); tickTown(c); town-=c; }
+    if(S.loc==='exp') S.pause=PACE.action;
   } finally { G.quiet=q; G.sum=null; }
-  S.log=S.log.slice(-20);
+  S.log=S.log.slice(-25);
   return sum;
 }
 

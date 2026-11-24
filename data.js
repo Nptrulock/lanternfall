@@ -46,14 +46,14 @@ D.RACES = {
       {lv:21, name:'Unbreakable', desc:'Survive one lethal hit per battle at 1 HP.', eff:{endure:1}},
       {lv:30, name:'Mountain Heart', desc:'+8 max HP, +2 DEF.', eff:{stat:{hp:8,def:2}}},
     ]},
-  halfling:{name:'Halfling', icon:'🧒', desc:'Small, quick and lucky. Finds more gold and dodges blows.',
+  halfling:{name:'Halfling', icon:'🧒', desc:'Small, quick and lucky. Earns more gold and dodges blows.',
     base:{hp:10,mp:4,str:2,def:2,mag:2,agi:5}, grow:{hp:1.2,mp:.45,str:.25,def:.25,mag:.3,agi:.45},
     traits:[
       {lv:1, name:'Lucky', desc:'+4% dodge.', eff:{dodge:.04}},
       {lv:5, name:'Coin Sense', desc:'+10% gold from battles.', eff:{gold:.10}},
-      {lv:10, name:'Light Fingers', desc:'+30% chance for enemies to drop materials.', eff:{matFind:.3}},
+      {lv:10, name:'Light Fingers', desc:'+1 AGI and +3% dodge.', eff:{stat:{agi:1}, dodge:.03}},
       {lv:17, name:'Lucky Break', desc:'+6% critical hit chance.', eff:{crit:.06}},
-      {lv:26, name:'Fortune\'s Favor', desc:'Relic and gear drops 25% more likely.', eff:{dropFind:.25}},
+      {lv:26, name:'Fortune\'s Favor', desc:'+5% crit and +15% gold.', eff:{crit:.05, gold:.15}},
     ]},
   orc:{name:'Orc', icon:'👹', desc:'Brutal fighters whose rage grows as they bleed.',
     base:{hp:14,mp:2,str:5,def:2,mag:1,agi:2}, grow:{hp:1.6,mp:.25,str:.45,def:.3,mag:.15,agi:.25},
@@ -107,7 +107,7 @@ D.SKILLS = {
   thunder:{name:'Thunder', type:'arcane', kind:'active', ap:36, mp:4, tgt:'enemy', eff:{spell:8, el:'bolt'}, desc:'Big lightning damage (8 + MAG).'},
   // Shadow
   backstab:{name:'Backstab', type:'shadow', kind:'active', ap:10, mp:1, tgt:'enemy', eff:{phys:1.3, crit:.25}, desc:'130% damage, +25% crit chance.'},
-  steal:{name:'Steal', type:'shadow', kind:'active', ap:12, mp:0, tgt:'enemy', eff:{steal:1}, desc:'Try to steal gold or a material.'},
+  steal:{name:'Steal', type:'shadow', kind:'active', ap:12, mp:0, tgt:'enemy', eff:{steal:1}, desc:'Try to pick an enemy\'s pocket for gold.'},
   evasion:{name:'Evasion', type:'shadow', kind:'passive', ap:15, eff:{dodge:.06}, desc:'+6% dodge.'},
   poison_blade:{name:'Poison Blade', type:'shadow', kind:'active', ap:16, mp:2, tgt:'enemy', eff:{phys:.8, poison:1}, desc:'80% damage and poisons (1 + ⅕MAG per turn, 3 turns).'},
   shadowstep:{name:'Shadowstep', type:'shadow', kind:'passive', ap:20, eff:{stat:{agi:2}}, desc:'+2 AGI.'},
@@ -125,12 +125,12 @@ D.SKILLS = {
   valor:{name:'Valor', type:'vital', kind:'active', ap:250, mp:4, tgt:'enemy', eff:{phys:3, sure:1}, desc:'A hero\'s blow: 300% damage that never misses.'},
   starfall:{name:'Starfall', type:'vital', kind:'active', ap:250, mp:6, tgt:'all', eff:{spell:10, el:'arcane'}, desc:'Stars rain on every enemy (10 + MAG).'},
   miracle:{name:'Miracle', type:'vital', kind:'active', ap:250, mp:8, tgt:'party', eff:{heal:99, reviveAll:1}, desc:'Fully heal and revive the whole party.'},
-  midas:{name:'Midas Touch', type:'vital', kind:'passive', ap:250, eff:{gold:1, dropFind:1}, desc:'Double gold and double gear/material drops (party-wide).'},
+  midas:{name:'Midas Touch', type:'vital', kind:'passive', ap:250, eff:{gold:1}, desc:'Double gold from battles (party-wide).'},
   haste:{name:'Haste', type:'vital', kind:'passive', ap:250, eff:{haste:.5}, desc:'50% chance to act twice every round.'},
   dragonblood:{name:'Dragonblood', type:'vital', kind:'passive', ap:250, eff:{stat:{hp:6,str:3,def:3,mag:3,agi:3}}, desc:'+6 HP and +3 to every other stat.'},
   // Job-exclusive (from job trees; only usable while that job is active)
   shield_bash:{name:'Shield Bash', type:'job', kind:'active', mp:2, tgt:'enemy', eff:{phys:1.1, stun:.5}, desc:'110% damage, 50% chance to stun.'},
-  sanctuary:{name:'Sanctuary', type:'job', kind:'active', mp:4, tgt:'party', eff:{heal:6}, desc:'Restore 6 + ½MAG HP to the whole party.'},
+  sanctuary:{name:'Sanctuary', type:'job', kind:'active', mp:4, tgt:'party', eff:{heal:4}, desc:'Restore 4 + ½MAG HP to the whole party.'},
   arcane_bolt:{name:'Arcane Bolt', type:'job', kind:'active', mp:3, tgt:'enemy', eff:{spell:7, el:'arcane'}, desc:'Pure arcane damage (7 + MAG), no weakness needed.'},
   mug:{name:'Mug', type:'job', kind:'active', mp:1, tgt:'enemy', eff:{phys:1.2, steal:1}, desc:'Hit for 120% and steal at the same time.'},
   volley:{name:'Volley', type:'job', kind:'active', mp:3, tgt:'all', eff:{phys:.9, sure:1}, desc:'Arrows hit every enemy for 90%, never miss.'},
@@ -138,124 +138,96 @@ D.SKILLS = {
   elemental_edge:{name:'Elemental Edge', type:'job', kind:'active', mp:2, tgt:'enemy', eff:{phys:1.3, weakSeek:1}, desc:'130% strike that always uses the target\'s weakness.'},
   thornstorm:{name:'Thornstorm', type:'job', kind:'active', mp:4, tgt:'all', eff:{spell:4, el:'wild', partyHeal:2}, desc:'Wild damage to all enemies, heal party 2.'},
   assassinate:{name:'Assassinate', type:'job', kind:'active', mp:3, tgt:'enemy', eff:{phys:2, crit:.4}, desc:'200% damage, +40% crit chance.'},
+  rally:{name:'Rally', type:'job', kind:'active', mp:3, tgt:'party', eff:{buff:{str:1, def:1}}, desc:'Party +1 STR and +1 DEF for the battle.'},
+  divine:{name:'Divine Light', type:'job', kind:'active', mp:4, tgt:'enemy', eff:{spell:8, el:'holy'}, desc:'Holy damage (8 + MAG).'},
   drain:{name:'Drain', type:'job', kind:'active', mp:3, tgt:'enemy', eff:{spell:5, el:'shadow', lifesteal:.5}, desc:'Shadow damage (5 + MAG), heal half of it.'},
 };
 
-/* ---------------- jobs ----------------
-   req: learned skills per type. advanced jobs also need a mentor at the Guild Hall. */
-const N = (id, name, tier, cost, eff, desc, req) => ({id, name, tier, cost, eff, desc, req});
+// v2 pacing: mastering a skill takes many fights (AP = wins wearing the gear)
+for(const id in D.SKILLS){ const s=D.SKILLS[id]; if(s.ap) s.ap = s.type==='vital' ? 600 : s.ap*3; }
+
+/* ---------------- jobs (sphere grids) ----------------
+   Base jobs open after ONE learned skill of their type. Advanced jobs need 2+2 learned skills AND rank 3 with one of their mentors.
+   Each job: a command skill (usable right away), and a grid of 3 branches × 6 nodes, spreading out from the core.
+   Ability nodes (the big ones) can be LOCKED IN: one per job, kept when the hero switches to another job. */
+const A = (n, eff, d) => ({n, eff, d});
+D.RING_COST = [0, 6, 10, 16, 24, 34, 46];
 D.JOBS = {
-  knight:{name:'Knight', icon:'🛡️', req:{martial:3}, stats:{hp:4,def:1}, desc:'A sturdy front-liner.', tree:[
-    N('k1','Shield Training',1,4,{stat:{def:1}},'+1 DEF'),
-    N('k2','Vigor',1,6,{stat:{hp:4}},'+4 max HP'),
-    N('k3','Shield Bash',2,10,{grant:'shield_bash'},'Learn Shield Bash (stun)','k1'),
-    N('k4','Heavy Arms',2,14,{physPct:.15},'+15% physical damage','k2'),
-    N('k5','Bulwark',2,14,{dr:1},'Take 1 less damage per hit','k1'),
-    N('k6','Taunt',3,24,{taunt:.35},'Enemies target you 35% more often','k5'),
-    N('k7','Last Stand',3,32,{endure:1},'Survive one lethal hit per battle','k4'),
+  knight:{name:'Knight', icon:'🛡️', type:'martial', req:{martial:1}, stats:{hp:4,def:1}, cmd:'shield_bash', desc:'A sturdy front-liner who shields the party.', branches:[
+    ['Bulwark', ['def1','hp3', A('Iron Wall',{dr:1},'Take 1 less damage per hit'), 'def1','hp4', A('Last Stand',{endure:1},'Survive one lethal hit per battle at 1 HP')]],
+    ['Arms',    ['str1','hp2', A('Heavy Arms',{physPct:.12},'+12% physical damage'), 'str1','str1', A('Cleaving Blow',{cleaveChance:.12},'Attacks have a 12% chance to hit every enemy')]],
+    ['Command', ['hp2','def1', A('Taunt',{taunt:.4},'Enemies target you 40% more often'), 'mp2','def1', A('Rally',{grant:'rally'},'Learn Rally: party +1 STR and +1 DEF for the battle')]],
   ]},
-  priest:{name:'Priest', icon:'⛪', req:{holy:3}, stats:{mp:3,mag:1}, desc:'Keeps the party standing.', tree:[
-    N('p1','Devotion',1,4,{stat:{mp:2}},'+2 max MP'),
-    N('p2','Gentle Hands',1,6,{healPct:.2},'+20% healing'),
-    N('p3','Sanctuary',2,10,{grant:'sanctuary'},'Learn Sanctuary (party heal)','p2'),
-    N('p4','Serenity',2,12,{mpEvery:3},'Regain 1 MP every 3 rounds','p1'),
-    N('p5','Smite',2,14,{holyPct:.4},'+40% holy damage','p1'),
-    N('p6','Guardian Angel',3,24,{rebirth:.25},'Once per battle, rise at 25% HP','p3'),
-    N('p7','Grace',3,32,{healPct:.3, stat:{mag:2}},'+30% healing, +2 MAG','p3'),
+  priest:{name:'Priest', icon:'⛪', type:'holy', req:{holy:1}, stats:{mp:3,mag:1}, cmd:'sanctuary', desc:'Keeps the party standing.', branches:[
+    ['Mercy', ['mp2','mag1', A('Gentle Hands',{healPct:.2},'+20% healing'), 'mp2','mag1', A('Grace',{healPct:.3},'+30% more healing')]],
+    ['Faith', ['hp3','def1', A('Serenity',{mpEvery:3},'Regain 1 MP every 3 rounds'), 'hp3','mp2', A('Guardian Angel',{rebirth:.25},'Once per battle, rise again at 25% HP')]],
+    ['Smite', ['mag1','mag1', A('Smite',{holyPct:.4},'+40% holy damage'), 'mag1','mp2', A('Divine Light',{grant:'divine'},'Learn Divine Light (holy damage 8 + MAG)')]],
   ]},
-  mage:{name:'Mage', icon:'🧙', req:{arcane:3}, stats:{mp:3,mag:1}, desc:'Elemental destruction.', tree:[
-    N('m1','Study',1,4,{stat:{mag:1}},'+1 MAG'),
-    N('m2','Deep Reserves',1,6,{stat:{mp:3}},'+3 max MP'),
-    N('m3','Arcane Bolt',2,10,{grant:'arcane_bolt'},'Learn Arcane Bolt','m1'),
-    N('m4','Elementalist',2,14,{spellPct:.2},'+20% spell damage','m1'),
-    N('m5','Thrift',2,12,{mpCut:1},'Spells cost 1 less MP (min 1)','m2'),
-    N('m6','Exploit',3,24,{weakPct:.5},'Weakness hits deal +50% more','m4'),
-    N('m7','Archmage',3,32,{spellPct:.25, stat:{mag:2}},'+25% spell damage, +2 MAG','m4'),
+  mage:{name:'Mage', icon:'🧙', type:'arcane', req:{arcane:1}, stats:{mp:3,mag:1}, cmd:'arcane_bolt', desc:'Elemental destruction.', branches:[
+    ['Elements', ['mag1','mp2', A('Elementalist',{spellPct:.15},'+15% spell damage'), 'mag1','mag1', A('Exploit',{weakPct:.5},'Weakness hits deal +50% more')]],
+    ['Mind',     ['mp2','mp2', A('Thrift',{mpCut:1},'Spells cost 1 less MP (min 1)'), 'mag1','mp3', A('Mana Tide',{mpEvery:2},'Regain 1 MP every 2 rounds')]],
+    ['Ward',     ['hp3','def1', A('Arcane Shield',{dodge:.06},'+6% dodge'), 'hp3','mag1', A('Archmage',{spellPct:.2, stat:{mag:2}},'+20% spell damage, +2 MAG')]],
   ]},
-  thief:{name:'Thief', icon:'🗝️', req:{shadow:3}, stats:{agi:2}, desc:'Quick hands, quicker blades.', tree:[
-    N('t1','Fleet Foot',1,4,{stat:{agi:1}},'+1 AGI'),
-    N('t2','Pockets',1,6,{gold:.15},'+15% gold'),
-    N('t3','Mug',2,10,{grant:'mug'},'Learn Mug','t2'),
-    N('t4','Vital Spots',2,14,{crit:.08},'+8% crit','t1'),
-    N('t5','Blur',2,14,{dodge:.08},'+8% dodge','t1'),
-    N('t6','Treasure Hunter',3,24,{dropFind:.4, matFind:.4},'+40% gear and material drops','t3'),
-    N('t7','Shadow Dance',3,32,{double:.15, stat:{agi:2}},'15% double attack, +2 AGI','t4'),
+  thief:{name:'Thief', icon:'🗝️', type:'shadow', req:{shadow:1}, stats:{agi:2}, cmd:'mug', desc:'Quick hands, quicker blades.', branches:[
+    ['Blade',   ['str1','agi1', A('Vital Spots',{crit:.08},'+8% critical chance'), 'str1','agi1', A('Shadow Dance',{double:.15},'15% chance to attack twice')]],
+    ['Evasion', ['agi1','hp2', A('Blur',{dodge:.08},'+8% dodge'), 'agi1','def1', A('Phantom Step',{dodge:.06, first:1},'+6% dodge and always act first in round 1')]],
+    ['Greed',   ['agi1','mp2', A('Pockets',{gold:.15},'+15% gold from battles'), 'agi1','str1', A('Golden Touch',{gold:.25},'+25% more gold from battles')]],
   ]},
-  ranger:{name:'Ranger', icon:'🏹', req:{wild:3}, stats:{agi:1,str:1}, desc:'Precise shots and nature lore.', tree:[
-    N('r1','Steady Aim',1,4,{hit:.06},'+6% hit'),
-    N('r2','Trailwise',1,6,{postHeal:2},'Heal 2 HP after battle'),
-    N('r3','Volley',2,10,{grant:'volley'},'Learn Volley (hits all)','r1'),
-    N('r4','Hunter\'s Mark',2,14,{physPct:.15},'+15% physical damage','r1'),
-    N('r5','Camouflage',2,12,{dodge:.07},'+7% dodge','r2'),
-    N('r6','Beast Bond',3,24,{wildPct:.5, stat:{str:1}},'+50% wild damage, +1 STR','r3'),
-    N('r7','Deadeye',3,32,{crit:.1, stat:{agi:2}},'+10% crit, +2 AGI','r4'),
+  ranger:{name:'Ranger', icon:'🏹', type:'wild', req:{wild:1}, stats:{agi:1,str:1}, cmd:'volley', desc:'Precise shots and trail lore.', branches:[
+    ['Aim',   ['agi1','str1', A('Steady Aim',{hit:.06},'+6% hit chance'), 'str1','agi1', A('Deadeye',{crit:.1},'+10% critical chance')]],
+    ['Trail', ['hp3','def1', A('Trailwise',{postHeal:3},'Heal 3 HP after every battle'), 'hp3','agi1', A('Hardy',{stam:6},'+6 max stamina (longer expeditions)')]],
+    ['Beast', ['str1','mag1', A("Hunter's Mark",{physPct:.12},'+12% physical damage'), 'mag1','str1', A('Beast Bond',{wildPct:.5, pack:1},'+50% wild damage; +1 damage per living ally')]],
   ]},
-  paladin:{name:'Paladin', icon:'🦁', req:{martial:4, holy:3}, mentor:'paladin', stats:{hp:6,def:2,mag:1}, desc:'Holy knight: strikes and shields.', tree:[
-    N('pa1','Oath',1,6,{stat:{def:1,hp:3}},'+1 DEF, +3 HP'),
-    N('pa2','Faith',1,8,{healPct:.2},'+20% healing'),
-    N('pa3','Holy Blade',2,14,{grant:'holy_blade'},'Learn Holy Blade','pa1'),
-    N('pa4','Aegis',2,18,{dr:1},'Take 1 less damage per hit','pa1'),
-    N('pa5','Judgement',3,30,{holyPct:.5, physPct:.1},'+50% holy, +10% physical damage','pa3'),
-    N('pa6','Martyr',3,40,{rebirth:.5, taunt:.3},'Rise once at 50%; draw enemy attacks','pa4'),
+  paladin:{name:'Paladin', icon:'🦁', type:'holy', adv:1, req:{martial:2, holy:2}, stats:{hp:6,def:2,mag:1}, cmd:'holy_blade', desc:'Holy knight: strikes and shields.', branches:[
+    ['Oath',  ['def1','hp4', A('Aegis',{dr:1},'Take 1 less damage per hit'), 'def1','hp4', A('Martyr',{taunt:.3, rebirth:.5},'Draw attacks; rise once at 50% HP')]],
+    ['Faith', ['mag1','mp2', A('Faith',{healPct:.2},'+20% healing'), 'mag1','mp2', A('Holy Aura',{regen:1},'Heal 1 HP at the start of each of your turns')]],
+    ['Zeal',  ['str1','str1', A('Judgement',{holyPct:.5},'+50% holy damage'), 'str1','def1', A('Crusader',{physPct:.15},'+15% physical damage')]],
   ]},
-  spellblade:{name:'Spellblade', icon:'🗡️', req:{martial:4, arcane:3}, mentor:'spellblade', stats:{str:1,mag:1,agi:1}, desc:'Steel and spell in one swing.', tree:[
-    N('sb1','Runic Edge',1,6,{stat:{str:1,mag:1}},'+1 STR, +1 MAG'),
-    N('sb2','Battle Focus',1,8,{stat:{mp:3}},'+3 max MP'),
-    N('sb3','Elemental Edge',2,14,{grant:'elemental_edge'},'Learn Elemental Edge','sb1'),
-    N('sb4','Arcane Steel',2,18,{physPct:.12, spellPct:.12},'+12% physical and spell damage','sb1'),
-    N('sb5','Exploit',3,30,{weakPct:.6},'Weakness hits deal +60% more','sb3'),
-    N('sb6','Blade Dance',3,40,{double:.15, stat:{agi:2}},'15% double attack, +2 AGI','sb4'),
+  spellblade:{name:'Spellblade', icon:'🗡️', type:'arcane', adv:1, req:{martial:2, arcane:2}, stats:{str:1,mag:1,agi:1}, cmd:'elemental_edge', desc:'Steel and spell in one swing.', branches:[
+    ['Runes', ['str1','mag1', A('Arcane Steel',{physPct:.1, spellPct:.1},'+10% physical and spell damage'), 'str1','mag1', A('Weakpoint',{weakPct:.6},'Weakness hits deal +60% more')]],
+    ['Dance', ['agi1','agi1', A('Blade Dance',{double:.12},'12% chance to attack twice'), 'agi1','hp3', A('Riposte',{counter:.15},'15% chance to strike back when hit')]],
+    ['Focus', ['mp2','mp2', A('Battle Focus',{mpEvery:3},'Regain 1 MP every 3 rounds'), 'mag1','mp2', A('Spell Echo',{echo:.12},'12% chance to cast a spell twice')]],
   ]},
-  druid:{name:'Druid', icon:'🌳', req:{wild:4, holy:3}, mentor:'druid', stats:{hp:3,mp:3,mag:1}, desc:'Nature\'s healer and storm.', tree:[
-    N('d1','Rooted',1,6,{stat:{hp:3,def:1}},'+3 HP, +1 DEF'),
-    N('d2','Wellspring',1,8,{regen:1},'Heal 1 HP each turn'),
-    N('d3','Thornstorm',2,14,{grant:'thornstorm'},'Learn Thornstorm','d1'),
-    N('d4','Bloom',2,18,{healPct:.3},'+30% healing','d2'),
-    N('d5','Wild Heart',3,30,{wildPct:.6, stat:{mag:2}},'+60% wild damage, +2 MAG','d3'),
-    N('d6','Renewal',3,40,{postHeal:6, mpEvery:2},'Heal 6 after battle, +1 MP every 2 rounds','d4'),
+  druid:{name:'Druid', icon:'🌳', type:'wild', adv:1, req:{wild:2, holy:2}, stats:{hp:3,mp:3,mag:1}, cmd:'thornstorm', desc:"Nature's healer and storm.", branches:[
+    ['Root',  ['hp3','def1', A('Rooted',{dr:1},'Take 1 less damage per hit'), 'hp4','def1', A('Barkskin',{thorns:2},'Attackers take 2 damage')]],
+    ['Bloom', ['mp2','mag1', A('Wellspring',{regen:1},'Heal 1 HP at the start of each of your turns'), 'mag1','mp2', A('Bloom',{healPct:.3},'+30% healing')]],
+    ['Storm', ['mag1','mag1', A('Wild Heart',{wildPct:.5},'+50% wild damage'), 'mag1','mag1', A('Renewal',{postHeal:6},'Heal 6 HP after every battle')]],
   ]},
-  assassin:{name:'Assassin', icon:'🥷', req:{shadow:4, wild:3}, mentor:'assassin', stats:{agi:2,str:1}, desc:'One perfect strike.', tree:[
-    N('as1','Silent Step',1,6,{stat:{agi:2}},'+2 AGI'),
-    N('as2','Poisoner',1,8,{poisonPlus:2},'Poisons tick +2'),
-    N('as3','Assassinate',2,14,{grant:'assassinate'},'Learn Assassinate','as1'),
-    N('as4','Ambush',2,18,{first:1, crit:.08},'Act first, +8% crit','as1'),
-    N('as5','Lethality',3,30,{critDmg:.5},'Crits deal +50% more','as3'),
-    N('as6','Phantom',3,40,{dodge:.12, double:.1},'+12% dodge, 10% double attack','as4'),
+  assassin:{name:'Assassin', icon:'🥷', type:'shadow', adv:1, req:{shadow:2, wild:2}, stats:{agi:2,str:1}, cmd:'assassinate', desc:'One perfect strike.', branches:[
+    ['Venom',  ['agi1','mag1', A('Poisoner',{poisonPlus:2},'Your poisons tick for +2'), 'agi1','str1', A('Lethality',{critDmg:.5},'Critical hits deal +50% more')]],
+    ['Ambush', ['agi1','agi1', A('Ambush',{first:1, crit:.06},'Act first in round 1, +6% crit'), 'agi1','str1', A('Execution',{crit:.1},'+10% critical chance')]],
+    ['Shade',  ['hp2','agi1', A('Phantom',{dodge:.1},'+10% dodge'), 'def1','hp3', A('Unseen',{double:.1},'10% chance to attack twice')]],
   ]},
-  warlock:{name:'Warlock', icon:'🕯️', req:{arcane:4, shadow:3}, mentor:'warlock', stats:{mag:2,mp:2}, desc:'Dark pacts, draining power.', tree:[
-    N('w1','Pact',1,6,{stat:{mag:1,mp:2}},'+1 MAG, +2 MP'),
-    N('w2','Hex',1,8,{shadowPct:.3},'+30% shadow damage'),
-    N('w3','Drain',2,14,{grant:'drain'},'Learn Drain (lifesteal)','w2'),
-    N('w4','Dark Insight',2,18,{spellPct:.2},'+20% spell damage','w1'),
-    N('w5','Soul Harvest',3,30,{killMp:2},'Regain 2 MP on each kill','w3'),
-    N('w6','Void Lord',3,40,{spellPct:.3, stat:{mag:3}},'+30% spell damage, +3 MAG','w4'),
+  warlock:{name:'Warlock', icon:'🕯️', type:'arcane', adv:1, req:{arcane:2, shadow:2}, stats:{mag:2,mp:2}, cmd:'drain', desc:'Dark pacts, draining power.', branches:[
+    ['Hex',   ['mag1','mp2', A('Hex',{shadowPct:.3},'+30% shadow damage'), 'mag1','mag1', A('Void Lord',{spellPct:.25},'+25% spell damage')]],
+    ['Pact',  ['mp2','hp2', A('Soul Harvest',{killMp:2},'Regain 2 MP on each kill'), 'mp2','mag1', A('Dark Pact',{mpCut:1},'Spells cost 1 less MP (min 1)')]],
+    ['Curse', ['mag1','agi1', A('Dark Insight',{spellPct:.15},'+15% spell damage'), 'mag1','mp2', A('Echoing Doom',{echo:.15},'15% chance to cast a spell twice')]],
   ]},
 };
 D.JOB_ORDER = ['knight','priest','mage','thief','ranger','paladin','spellblade','druid','assassin','warlock'];
-
-/* ---------------- materials ---------------- */
-D.MATS = {
-  stone:{name:'Stone', icon:'🪨', desc:'Building block for every village upgrade.', sell:1},
-  quartz:{name:'Quartz', icon:'🔹', desc:'A pretty crystal from the mine. Sell it for gold.', sell:4},
-  silver:{name:'Silver Ore', icon:'🪙', desc:'Valuable ore from the mine. Sell it for gold.', sell:10},
-  nugget:{name:'Gold Nugget', icon:'🟡', desc:'A lucky find deep in the mine. Sell it for gold.', sell:25},
-  herb:{name:'Wild Herb', icon:'🌿', desc:'Used in potions and food.'},
-  gel:{name:'Slime Gel', icon:'🟢', desc:'Sticky. Potions and the first village upgrades.'},
-  fur:{name:'Soft Fur', icon:'🧶', desc:'Warm pelts for cooking and the tavern.'},
-  timber:{name:'Living Timber', icon:'🪵', desc:'Strong wood for buildings.'},
-  silk:{name:'Spider Silk', icon:'🕸️', desc:'Fine thread for the library and gear.'},
-  copper:{name:'Copper Ore', icon:'🟠', desc:'Metal for the forge and smithy. Sells for a little gold.', sell:2},
-  bone:{name:'Old Bone', icon:'🦴', desc:'Grim but useful: alchemy and the guild hall.'},
-  lily:{name:'Bog Lily', icon:'🪷', desc:'Rare flower for strong potions.'},
-  scale:{name:'Croc Scale', icon:'🐊', desc:'Tough hide for upgrades.'},
-  ember:{name:'Ash Ember', icon:'🔥', desc:'Still warm. Smithy and tavern.'},
-  frost:{name:'Frost Crystal', icon:'❄️', desc:'Never melts. Apothecary and library.'},
-  ecto:{name:'Ectoplasm', icon:'👻', desc:'Ghostly residue for the guild hall.'},
-  dscale:{name:'Dragon Scale', icon:'🐉', desc:'The finest material in the land.'},
-};
+// Build each job's grid: node ids jid.b.i ; core node 'core'. Layout: polar coordinates for the sphere-grid view.
+(function(){
+  const statName = {hp:'HP', mp:'MP', str:'STR', def:'DEF', mag:'MAG', agi:'AGI'};
+  for(const jid in D.JOBS){ const j=D.JOBS[jid]; const nodes=[{id:'core', name:j.name+' Core', core:1, ring:0, cost:0, eff:{}, desc:`Become a ${j.name}: +${Object.entries(j.stats).map(([k,v])=>v+' '+statName[k]).join(', +')} and the ${'{cmd}'} command.`, x:0, y:0, links:[]}];
+    j.branches.forEach(([bname, list], b)=>{ const base = -90 + b*120;
+      list.forEach((spec, i)=>{ const ring=i+1; const ang=(base + (i%2? 14:-14)*(i<5?1:0)) * Math.PI/180; const r=ring*1;
+        let n; if(typeof spec==='string'){ const m=spec.match(/^([a-z]+)(\d+)$/); n={name:`+${m[2]} ${statName[m[1]]}`, eff:{stat:{[m[1]]:+m[2]}}, desc:`+${m[2]} ${statName[m[1]]}`, stat:m[1]}; }
+        else n={name:spec.n, eff:spec.eff, desc:spec.d, ability:1};
+        Object.assign(n, {id:`${b}.${i}`, branch:b, bname, ring, cost:Math.round(D.RING_COST[ring]*(n.ability?1.5:1)), x:Math.cos(ang)*r, y:Math.sin(ang)*r, links:[]});
+        nodes.push(n);
+      }); });
+    const byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
+    const link=(a,b)=>{ byId[a].links.push(b); byId[b].links.push(a); };
+    for(let b=0;b<3;b++){ link('core', `${b}.0`); for(let i=1;i<6;i++) link(`${b}.${i-1}`, `${b}.${i}`); }
+    // cross links make it a web: ring 3 and ring 6 of neighbouring branches
+    for(let b=0;b<3;b++){ link(`${b}.3`, `${(b+1)%3}.3`); }
+    j.nodes=nodes; j.node=byId; nodes[0].desc=nodes[0].desc.replace('{cmd}', '“'+(D.SKILLS[j.cmd]?D.SKILLS[j.cmd].name:j.cmd)+'”');
+    j.totalJp = nodes.reduce((a,n)=>a+n.cost,0);
+  }
+})();
 
 /* ---------------- equipment ----------------
-   slot: weapon | armor | acc. skills: taught by wearing it. tier = zone it belongs to. shop = smithy level to buy (null = drop only) */
+   slot: weapon | armor | acc. skills: taught by wearing it. tier = zone it belongs to. shop = Market level that sells it (null = gear halls / fusing only) */
 const I = (id, name, icon, slot, tier, stats, skills, price, shop) => ({id, name, icon, slot, tier, stats, skills, price, shop});
 D.ITEMS = [
   // tier 0 — starter/shop
@@ -298,45 +270,46 @@ D.ITEMS = [
   I('lens','Seer\'s Lens','🔍','acc',2,{mag:2},['focus'],100,null),
   I('fang','Wolf Fang Necklace','🦷','acc',2,{str:1,agi:1},['beast_call'],0,null),
   // tier 3 — Sunken Marsh
-  I('halberd','Bog Halberd','🔱','weapon',3,{str:4},['war_cry'],180,4),
+  I('halberd','Bog Halberd','🔱','weapon',3,{str:4},['war_cry'],180,null),
   I('lily_staff','Lily Staff','🌸','weapon',3,{mag:4,mp:2},['circle'],0,null),
-  I('croc_mail','Croc Mail','🐊','armor',3,{def:4,hp:4},['counter'],170,4),
+  I('croc_mail','Croc Mail','🐊','armor',3,{def:4,hp:4},['counter'],170,null),
   I('purse','Hag\'s Purse','👛','acc',3,{agi:2},['greed'],0,null),
   I('marsh_bow','Reed Longbow','🏹','weapon',3,{str:3,agi:2},['aimed_shot','entangle'],175,null),
   // tier 4 — Ashen Highlands
   I('flamberge','Flamberge','⚔️','weapon',4,{str:6},['double_strike'],0,null),
-  I('ember_rod','Ember Scepter','🔥','weapon',4,{mag:6},['flame_wave'],340,5),
-  I('ash_plate','Ashen Plate','🛡️','armor',4,{def:6,hp:6},['iron_skin','toughness'],320,5),
+  I('ember_rod','Ember Scepter','🔥','weapon',4,{mag:6},['flame_wave'],340,null),
+  I('ash_plate','Ashen Plate','🛡️','armor',4,{def:6,hp:6},['iron_skin','toughness'],320,null),
   I('phoenix_ring','Cinder Ring','💍','acc',4,{mag:2,hp:3},['raise'],0,null),
   // tier 5 — Frostpeak
-  I('ice_brand','Ice Brand','🗡️','weapon',5,{str:8,agi:1},['cleave','sunder'],600,6),
+  I('ice_brand','Ice Brand','🗡️','weapon',5,{str:8,agi:1},['cleave','sunder'],600,null),
   I('glacier_staff','Glacier Staff','🧊','weapon',5,{mag:8,mp:3},['thunder'],0,null),
-  I('yeti_coat','Yeti Coat','🧥','armor',5,{def:8,hp:10},['counter','toughness'],560,6),
+  I('yeti_coat','Yeti Coat','🧥','armor',5,{def:8,hp:10},['counter','toughness'],560,null),
   I('owl_charm','Owl Charm','🦉','acc',5,{mag:3,agi:3},['keen_eye','focus'],0,null),
   // tier 6 — Shadowfell Ruins
   I('soul_blade','Soulreaver','🗡️','weapon',6,{str:11,agi:2},['double_strike','backstab'],0,null),
-  I('lich_staff','Lich Staff','🦯','weapon',6,{mag:11,mp:4},['night_shade','thunder'],1100,7),
-  I('dark_plate','Darksteel Plate','🛡️','armor',6,{def:11,hp:14},['protect','counter'],1000,7),
+  I('lich_staff','Lich Staff','🦯','weapon',6,{mag:11,mp:4},['night_shade','thunder'],1100,null),
+  I('dark_plate','Darksteel Plate','🛡️','armor',6,{def:11,hp:14},['protect','counter'],1000,null),
   I('grave_ring','Grave Ring','💍','acc',6,{mp:4,mag:3},['prayer','circle'],0,null),
   // tier 7 — Dragon's Spine
   I('dragon_sword','Dragonfang','⚔️','weapon',7,{str:15,agi:3},['war_cry','double_strike'],0,null),
-  I('dragon_staff','Wyrm Staff','🪄','weapon',7,{mag:15,mp:6},['flame_wave','raise'],2200,8),
-  I('dragon_mail','Dragonscale Mail','🐲','armor',7,{def:15,hp:20},['thorn_hide','iron_skin'],2000,8),
+  I('dragon_staff','Wyrm Staff','🪄','weapon',7,{mag:15,mp:6},['flame_wave','raise'],2200,null),
+  I('dragon_mail','Dragonscale Mail','🐲','armor',7,{def:15,hp:20},['thorn_hide','iron_skin'],2000,null),
 ];
 D.ITEM = {}; D.ITEMS.forEach(it => D.ITEM[it.id] = it);
 D.SLOTS = ['weapon','armor','acc','relic'];
 D.SLOT_NAMES = {weapon:'Weapon', armor:'Armor', acc:'Accessory', relic:'Relic'};
 
 /* ---------------- relics ----------------
-   Very rare. Equip in the relic slot. Each houses one vital skill (250 AP to master). odds = 1 in N */
+   Never dropped. Each zone's relic is the reward for completing that zone's bestiary collection
+   (every foe Mastered, every Gilded variant defeated, boss beaten). Each houses one vital skill (600 AP). */
 D.RELICS = [
-  {id:'phoenix', name:'Phoenix Feather', icon:'🪶', skill:'rebirth', stats:{hp:4}, src:{boss:1, odds:29, any:9000}, desc:'Warm to the touch, it refuses to let its bearer fall.'},
-  {id:'crest', name:'Hero\'s Crest', icon:'🎖️', skill:'valor', stats:{str:2}, src:{boss:2, odds:29, any:9000}, desc:'Worn by the last hero of the realm.'},
-  {id:'midas', name:'Gilded Hand', icon:'🖐️', skill:'midas', stats:{agi:1}, src:{boss:3, odds:33, any:12000}, desc:'Everything it touches turns valuable.'},
-  {id:'chalice', name:'Saint\'s Chalice', icon:'🏆', skill:'miracle', stats:{mp:4,mag:1}, src:{boss:4, odds:33, any:12000}, desc:'Its water mends anything.'},
-  {id:'hourglass', name:'Hourglass of Ages', icon:'⏳', skill:'haste', stats:{agi:3}, src:{boss:5, odds:37, any:15000}, desc:'Time bends around whoever holds it.'},
-  {id:'moonstone', name:'Moonstone Tiara', icon:'👑', skill:'starfall', stats:{mag:3,mp:3}, src:{boss:6, odds:37, any:15000}, desc:'Pulls the stars down from the sky.'},
-  {id:'dragonheart', name:'Dragon Heart', icon:'❤️‍🔥', skill:'dragonblood', stats:{hp:5}, src:{boss:7, odds:41, any:18000}, desc:'Still beating, centuries later.'},
+  {id:'phoenix', name:'Phoenix Feather', icon:'🪶', skill:'rebirth', stats:{hp:4}, zone:0, desc:'Warm to the touch, it refuses to let its bearer fall.'},
+  {id:'crest', name:'Hero\'s Crest', icon:'🎖️', skill:'valor', stats:{str:2}, zone:1, desc:'Worn by the last hero of the realm.'},
+  {id:'midas', name:'Gilded Hand', icon:'🖐️', skill:'midas', stats:{agi:1}, zone:2, desc:'Everything it touches turns valuable.'},
+  {id:'chalice', name:'Saint\'s Chalice', icon:'🏆', skill:'miracle', stats:{mp:4,mag:1}, zone:3, desc:'Its water mends anything.'},
+  {id:'hourglass', name:'Hourglass of Ages', icon:'⏳', skill:'haste', stats:{agi:3}, zone:4, desc:'Time bends around whoever holds it.'},
+  {id:'moonstone', name:'Moonstone Tiara', icon:'👑', skill:'starfall', stats:{mag:3,mp:3}, zone:5, desc:'Pulls the stars down from the sky.'},
+  {id:'dragonheart', name:'Dragon Heart', icon:'❤️‍🔥', skill:'dragonblood', stats:{hp:5}, zone:6, desc:'Still beating, centuries later.'},
 ];
 D.RELIC = {}; D.RELICS.forEach(r => D.RELIC[r.id] = r);
 
@@ -349,11 +322,11 @@ D.ROLES = {
   tank:{hp:1.6, atk:.85, def:1.6, agi:.6, mag:0},
   caster:{hp:.85, atk:.7, def:.7, agi:1, mag:1.15},
 };
-D.ZP = {hp:[5,10,18,30,46,66,92,124], atk:[3,5,7,10,14,18,23,29], def:[0,1,3,5,8,11,15,19], agi:[2,4,5,7,9,11,13,15],
-        xp:[2,4,8,13,20,30,44,62], gold:[1,3,5,9,14,21,30,42]};
+D.ZP = {hp:[28,46,68,96,130,172,222,282], atk:[4,6,8,11,14,18,23,29], def:[0,1,3,5,7,10,13,17], agi:[2,4,5,7,9,11,13,15],
+        xp:[2,4,7,11,17,25,36,50], gold:[2,4,7,11,16,23,32,44]};
 const E = (id, name, icon, role, weak, drops, extra) => Object.assign({id, name, icon, role, weak, drops}, extra || {});
 D.ZONES = [
-  {id:'meadow', name:'Greenhollow Meadow', lv:'1–3', bg:['#7fc96b','#3d7a3a'], sky:['#8ecbf0','#d9f1ff'], wins:30,
+  {id:'meadow', name:'Greenhollow Meadow', lv:'1–3', bg:['#7fc96b','#3d7a3a'], sky:['#8ecbf0','#d9f1ff'], wins:80, mx:44, my:63,
     desc:'Gentle fields just outside the village. Slimes and rabbits. A good place to learn.',
     enemies:[
       E('slime','Blue Slime','💧','normal','fire',[['gel',.35],['gel_bangle',.02],['ring_mp',.015]]),
@@ -362,7 +335,7 @@ D.ZONES = [
       E('bee','Buzzbee','🐝','quick','ice',[['herb',.2],['knife',.02]]),
     ],
     boss:E('king_slime','King Slime','💧','tank','fire',[['gel',1],['gel_bangle',.3],['ring_mp',.3]], {boss:1, hat:'👑'})},
-  {id:'wood', name:'Whisperwood', lv:'3–7', bg:['#3f7d4a','#1f4027'], sky:['#5d8f6b','#a9d1a4'], wins:50,
+  {id:'wood', name:'Whisperwood', lv:'3–7', bg:['#3f7d4a','#1f4027'], sky:['#5d8f6b','#a9d1a4'], wins:150, mx:15, my:69,
     desc:'Old trees that murmur at night. Wolves hunt in packs here.',
     enemies:[
       E('wolf','Grey Wolf','🐺','quick','fire',[['fur',.35],['bow',.02]]),
@@ -371,7 +344,7 @@ D.ZONES = [
       E('spider','Webspinner','🕷️','normal','fire',[['silk',.35],['dagger',.025]]),
     ],
     boss:E('elder_treant','Elder Treant','🌲','tank','fire',[['timber',1],['mace',.3],['bark',.3]], {boss:1})},
-  {id:'mines', name:'Old Copper Mines', lv:'7–11', bg:['#6b5a4a','#2e241c'], sky:['#3a2f28','#5a4a3c'], wins:80,
+  {id:'mines', name:'Old Copper Mines', lv:'7–11', bg:['#6b5a4a','#2e241c'], sky:['#3a2f28','#5a4a3c'], wins:280, mx:79, my:52,
     desc:'Abandoned tunnels. Bats in the dark, golems in the deep.',
     enemies:[
       E('bat','Cave Bat','🦇','quick','wild',[['bone',.2],['cloak',.02]]),
@@ -380,7 +353,7 @@ D.ZONES = [
       E('skeleton','Skeleton Miner','💀','brute','holy',[['bone',.35],['scepter',.02],['lens',.015]]),
     ],
     boss:E('troll','Cave Troll','🧌','brute','fire',[['copper',1],['fang',.3],['lens',.3]], {boss:1})},
-  {id:'marsh', name:'Sunken Marsh', lv:'11–15', bg:['#5c6b3a','#26301a'], sky:['#6f7d5a','#a8b38c'], wins:110,
+  {id:'marsh', name:'Sunken Marsh', lv:'11–15', bg:['#5c6b3a','#26301a'], sky:['#6f7d5a','#a8b38c'], wins:450, mx:22, my:46,
     desc:'Fog, frogs and a hag who never shares. Poison bites here.',
     enemies:[
       E('frog','Bog Frog','🐸','normal','ice',[['lily',.25],['herb',.3]]),
@@ -389,7 +362,7 @@ D.ZONES = [
       E('croc','Mud Croc','🐊','brute','bolt',[['scale',.35],['marsh_bow',.015]]),
     ],
     boss:E('hydra','Marsh Hydra','🐍','brute','fire',[['scale',1],['lily_staff',.3],['purse',.3]], {boss:1})},
-  {id:'ash', name:'Ashen Highlands', lv:'15–20', bg:['#7a4a3a','#3a1f18'], sky:['#c2694a','#f0b088'], wins:140,
+  {id:'ash', name:'Ashen Highlands', lv:'15–20', bg:['#7a4a3a','#3a1f18'], sky:['#c2694a','#f0b088'], wins:650, mx:80, my:25,
     desc:'A volcanic plateau. Everything here burns.',
     enemies:[
       E('salamander','Salamander','🦎','quick','ice',[['ember',.3],['phoenix_ring',.012]]),
@@ -398,7 +371,7 @@ D.ZONES = [
       E('lava_golem','Lava Golem','🌋','tank','ice',[['stone',.5],['ember',.35]]),
     ],
     boss:E('salamander_lord','Salamander Lord','🔥','brute','ice',[['ember',1],['flamberge',.3],['phoenix_ring',.3]], {boss:1})},
-  {id:'frost', name:'Frostpeak', lv:'20–26', bg:['#cfe3ef','#7d98ad'], sky:['#9fb7c9','#e8f3fb'], wins:170,
+  {id:'frost', name:'Frostpeak', lv:'20–26', bg:['#cfe3ef','#7d98ad'], sky:['#9fb7c9','#e8f3fb'], wins:850, mx:20, my:17,
     desc:'Icy cliffs and howling wind. Bring fire.',
     enemies:[
       E('yeti','Yeti','🦍','brute','fire',[['frost',.3],['fur',.3]]),
@@ -407,7 +380,7 @@ D.ZONES = [
       E('owl','Snow Owl','🦉','quick','bolt',[['frost',.2],['owl_charm',.012]]),
     ],
     boss:E('frost_giant','Frost Giant','🧊','brute','fire',[['frost',1],['glacier_staff',.3],['owl_charm',.3]], {boss:1})},
-  {id:'ruins', name:'Shadowfell Ruins', lv:'26–33', bg:['#3a3048','#15111d'], sky:['#2a2238','#4a3d5c'], wins:200,
+  {id:'ruins', name:'Shadowfell Ruins', lv:'26–33', bg:['#3a3048','#15111d'], sky:['#2a2238','#4a3d5c'], wins:1050, mx:48, my:21,
     desc:'A fallen kingdom ruled by the dead. Holy light burns them.',
     enemies:[
       E('ghoul','Ghoul','🧟','brute','holy',[['bone',.35],['ecto',.25]]),
@@ -416,7 +389,7 @@ D.ZONES = [
       E('necro','Necromancer','🧙','caster','holy',[['ecto',.35],['bone',.3]]),
     ],
     boss:E('lich','The Lich King','☠️','caster','holy',[['ecto',1],['soul_blade',.3],['grave_ring',.3]], {boss:1})},
-  {id:'spine', name:'Dragon\'s Spine', lv:'33–40', bg:['#5a2a2a','#1d0c0c'], sky:['#7a2e1e','#d0703a'], wins:250,
+  {id:'spine', name:'Dragon\'s Spine', lv:'33–40', bg:['#5a2a2a','#1d0c0c'], sky:['#7a2e1e','#d0703a'], wins:1300, mx:50, my:8,
     desc:'The mountain where the last dragon sleeps.',
     enemies:[
       E('drake','Fire Drake','🐲','brute','ice',[['dscale',.25],['dragon_sword',.006]]),
@@ -426,120 +399,173 @@ D.ZONES = [
     ],
     boss:E('elder_dragon','Ignarath the Elder Dragon','🐉','brute','ice',[['dscale',1],['dragon_sword',.3],['dragon_mail',.3]], {boss:1})},
 ];
-
-/* ---------------- village ----------------
-   Each profession builds one building. Building level N needs profession level, gold and materials. */
+/* ---------------- town of Lanternfall ----------------
+   Fighting earns gold, XP, AP, JP and bestiary progress. It never drops items.
+   Items, materials and gear come from town work (professions), the mine and the gear halls. */
+D.MATS = {
+  stone:{name:'Stone', icon:'🪨', desc:'Building block for every town upgrade.', sell:1},
+  timber:{name:'Timber', icon:'🪵', desc:'Sawn logs for buildings.', sell:1},
+  herb:{name:'Wild Herb', icon:'🌿', desc:'Used in tavern meals.', sell:1},
+  fur:{name:'Soft Fur', icon:'🧶', desc:'Warm pelts for meals and the lodge.', sell:2},
+  copper:{name:'Copper Ore', icon:'🟠', desc:'Metal for the forge and smithing.', sell:2},
+  silk:{name:'Spider Silk', icon:'🕸️', desc:'Fine thread from the Whisperwood edge.', sell:3},
+  iron:{name:'Iron Ore', icon:'⛓️', desc:'Strong ore from the deep shafts.', sell:4},
+  lily:{name:'Bog Lily', icon:'🪷', desc:'A rare flower from the marsh road.', sell:6},
+  ember:{name:'Ash Ember', icon:'🔥', desc:'Still warm. From the ash vein.', sell:9},
+  frost:{name:'Frost Crystal', icon:'❄️', desc:'Never melts. From the frost vein.', sell:14},
+  ecto:{name:'Ectoplasm', icon:'👻', desc:'Ghostly residue the scholars distill.', sell:20},
+  dscale:{name:'Dragon Scale', icon:'🐉', desc:'Shed scales dug from the Spine.', sell:30},
+  quartz:{name:'Quartz', icon:'🔹', desc:'A pretty crystal from the mine. Sell it for gold.', sell:2, gem:1},
+  silver:{name:'Silver Ore', icon:'🪙', desc:'Valuable ore. Sell it for gold.', sell:6, gem:1},
+  nugget:{name:'Gold Nugget', icon:'🟡', desc:'A lucky find deep in the mine. Sell it for gold.', sell:15, gem:1},
+};
+// Professions: a worker assigned to one levels it up and produces its goods. Some goods need a zone reached first (new trade route).
+// out: [mat, seconds per unit at Lv1, min seconds, minLv, zone needed (index of a zone that must be OPEN)]
 D.PROFS = {
-  smithing:{name:'Smithing', icon:'⚒️', building:'smithy', desc:'Hammer and anvil. Builds the Smithy: more gear for sale.'},
-  cooking:{name:'Cooking', icon:'🍳', building:'tavern', desc:'Feeds the village. Builds the Tavern: food buffs.'},
-  alchemy:{name:'Alchemy', icon:'⚗️', building:'apothecary', desc:'Brews remedies. Builds the Apothecary: potions and elixirs. Also gathers Wild Herbs.'},
-  scholarship:{name:'Scholarship', icon:'📜', building:'library', desc:'Studies monsters. Builds the Library: bestiary knowledge = weaker enemies.'},
-  masonry:{name:'Masonry', icon:'🧱', building:'guild', desc:'Quarries stone (used in every upgrade). Builds the Guild Hall (job mentors) and all five gear halls.'},
-  mining:{name:'Mining', icon:'⛏️', building:null, desc:'Digs slowly for 💎 Diamonds (gear pulls), plus Stone, Copper and gems you can sell.'},
+  mining:{name:'Mining', icon:'⛏️', place:'mine', desc:'Digs slowly for 💎 Diamonds (one dig at a time, extra miners don\'t speed it up), plus stone, ore and gems.',
+    out:[['diamond',3000,1800,1,0],['stone',40,12,1,0],['quartz',180,60,1,0],['copper',75,20,2,0],['iron',140,40,5,2],['silver',400,120,6,0],['ember',300,90,10,4],['frost',360,110,14,5],['nugget',900,300,12,0],['dscale',900,300,20,7]]},
+  foraging:{name:'Foraging', icon:'🪓', place:'lodge', desc:'Cuts timber and gathers herbs, fur and silk around town.',
+    out:[['timber',40,12,1,0],['herb',50,15,1,0],['fur',90,25,3,0],['silk',150,45,4,1],['lily',300,90,8,3]]},
+  smithing:{name:'Smithing', icon:'⚒️', place:'forge', desc:'Smelts ore and now and then forges a Common piece of gear. Raises Market sell prices.',
+    out:[['gear',2400,900,1,0]]},
+  cooking:{name:'Cooking', icon:'🍳', place:'tavern', desc:'Cooks meals from herbs and fur. The party eats one when it sets out.', out:[]},
+  scholarship:{name:'Scholarship', icon:'📜', place:'library', desc:'Studies the bestiary (extra kill credit) and distills ectoplasm later on.',
+    out:[['study',120,30,1,0],['ecto',600,200,12,6]]},
 };
-D.PROF_ORDER = ['mining','masonry','smithing','cooking','alchemy','scholarship'];
-D.BUILDINGS = {
-  smithy:{name:'Smithy', icon:'⚒️', prof:'smithing', unlock:'Sells basic gear and buys your spares. Each level raises sell prices and unlocks fusing 3 copies of an item into the next rarity.'},
-  tavern:{name:'Tavern', icon:'🍺', prof:'cooking', unlock:'Each level adds a new meal (party buff for a number of battles).'},
-  apothecary:{name:'Apothecary', icon:'⚗️', prof:'alchemy', unlock:'Each level adds potions and elixirs.'},
-  library:{name:'Library', icon:'📚', prof:'scholarship', unlock:'Each level lets the bestiary teach one more tier of enemy weaknesses.'},
-  guild:{name:'Guild Hall', icon:'🏛️', prof:'masonry', unlock:'Each level brings new mentors: JP bonuses, tier-3 job skills and advanced jobs.'},
-};
-D.BUILD_ORDER = ['smithy','tavern','apothecary','library','guild'];
-D.BMAX = 8;
-// level index = target level (1..8). prof = required profession level.
-D.BUILD_COST = [null,
-  {prof:1, gold:0, stone:0},
-  {prof:3, gold:40, stone:5},
-  {prof:6, gold:120, stone:12},
-  {prof:10, gold:300, stone:25},
-  {prof:15, gold:700, stone:40},
-  {prof:21, gold:1500, stone:60},
-  {prof:28, gold:3000, stone:90},
-  {prof:36, gold:6000, stone:130},
-];
-// each building's flavor material for levels 2..8 (amount = 2 × level)
-D.BUILD_MATS = {
-  smithy:    ['gel','timber','copper','scale','ember','frost','dscale'],
-  tavern:    ['fur','fur','silk','lily','ember','frost','ecto'],
-  apothecary:['herb','silk','bone','lily','ember','frost','ecto'],
-  library:   ['gel','silk','bone','scale','ecto','frost','dscale'],
-  guild:     ['fur','timber','bone','scale','ember','ecto','dscale'],
-};
-D.WORKER_SLOTS = [{vl:0, n:2}, {vl:5, n:3}, {vl:14, n:4}, {vl:28, n:5}, {vl:45, n:6}]; // vl = village level (sum of building levels)
+D.PROF_ORDER = ['mining','foraging','smithing','cooking','scholarship'];
+D.WORKER_COST = [0, 60, 220, 650, 1600, 3800, 8500]; // gold to hire worker #2, #3, ...
+D.WORKER_NAMES = ['Tam','Odile','Bram','Wynn','Hesper','Corin','Lio'];
 
-D.FOODS = [
-  {id:'stew', name:'Rabbit Stew', icon:'🍲', tav:1, gold:15, mats:{fur:2}, battles:20, buff:{str:1}, desc:'+1 STR'},
-  {id:'bread', name:'Herb Bread', icon:'🍞', tav:2, gold:25, mats:{herb:3}, battles:25, buff:{hp:4}, desc:'+4 max HP'},
-  {id:'pie', name:'Honey Pie', icon:'🥧', tav:3, gold:50, mats:{herb:3, gel:3}, battles:25, buff:{agi:2, mag:1}, desc:'+2 AGI, +1 MAG'},
-  {id:'roast', name:'Hunter\'s Roast', icon:'🍖', tav:4, gold:120, mats:{fur:6, herb:4}, battles:30, buff:{str:2, def:1}, desc:'+2 STR, +1 DEF'},
-  {id:'chowder', name:'Marsh Chowder', icon:'🥣', tav:5, gold:260, mats:{lily:4, herb:6}, battles:30, buff:{hp:10, mp:3}, desc:'+10 HP, +3 MP'},
-  {id:'chili', name:'Ember Chili', icon:'🌶️', tav:6, gold:520, mats:{ember:5, fur:6}, battles:35, buff:{str:3, mag:3}, desc:'+3 STR, +3 MAG'},
-  {id:'feast', name:'Royal Feast', icon:'🍱', tav:7, gold:1000, mats:{frost:5, fur:10, herb:10}, battles:40, buff:{hp:12, str:3, def:3, mag:3, agi:3}, desc:'+12 HP, +3 to all'},
-  {id:'dragon_soup', name:'Dragonfire Broth', icon:'🫕', tav:8, gold:2200, mats:{dscale:3, ember:8}, battles:50, buff:{hp:20, str:5, def:5, mag:5, agi:4}, desc:'+20 HP, +5 STR/DEF/MAG, +4 AGI'},
+// Buildings on the town map. x/y = % position on art/town_map.webp
+D.PLACES = {
+  hall:    {name:'Town Hall', icon:'🏛️', x:71, y:18, desc:'Hire workers and set their professions.', kind:'hall'},
+  market:  {name:'Market', icon:'⚖️', x:38, y:36, desc:'Buy basic gear, sell spares and gems.', kind:'market', build:1},
+  forge:   {name:'Forge', icon:'🔥', x:22, y:20, desc:'Gear hall for warriors. Fuse duplicates. Mentors: Dorrin, Kaia.', kind:'banner', banner:'forge'},
+  chapel:  {name:'Chapel', icon:'⛪', x:85, y:34, desc:'Gear hall for healers. Mentors: Sela, Ansel.', kind:'banner', banner:'chapel'},
+  arcanum: {name:'Arcanum', icon:'🔮', x:73, y:57, desc:'Gear hall for mages. Mentors: Vey, Morwen.', kind:'banner', banner:'arcanum'},
+  den:     {name:"Thieves' Den", icon:'🗝️', x:39, y:76, desc:'Gear hall for rogues. Mentors: Pell, the Whisper.', kind:'banner', banner:'den'},
+  lodge:   {name:"Hunter's Lodge", icon:'🏹', x:13, y:83, desc:'Gear hall for rangers. Mentors: Ysolde, Moss.', kind:'banner', banner:'lodge'},
+  training:{name:'Training Grounds', icon:'🎯', x:23, y:61, desc:'Raise stamina. Mentors: Aldric, Brann.', kind:'training', build:1},
+  tavern:  {name:'Tavern', icon:'🍺', x:89, y:24, desc:'Meals that buff the next expedition.', kind:'tavern', build:1},
+  library: {name:'Library', icon:'📚', x:47, y:9, desc:'Bestiary and collection rewards.', kind:'library', build:1},
+  mine:    {name:'Mine', icon:'⛏️', x:86, y:78, desc:'Where diamonds come from.', kind:'mine'},
+};
+D.PLACE_ORDER = ['hall','market','training','forge','mine','tavern','library','chapel','arcanum','den','lodge'];
+// Upgradeable buildings (non-hall): level 0 = not built.
+D.BMAX = 8;
+D.BUILD = {
+  market:  {prof:'smithing', start:1, unlock:'Each level: more basic gear for sale and +5% sell prices.'},
+  training:{prof:null, start:1, unlock:'Each level lets heroes train 5 more Endurance levels, 10% faster.'},
+  tavern:  {prof:'cooking', start:0, unlock:'Each level adds a new meal recipe.'},
+  library: {prof:'scholarship', start:0, unlock:'Each level lets the bestiary teach one more tier.'},
+  forge:   {prof:null, start:1, banner:1}, chapel:{prof:null, start:0, banner:1}, arcanum:{prof:null, start:0, banner:1}, den:{prof:null, start:0, banner:1}, lodge:{prof:null, start:0, banner:1},
+};
+D.BUILD_ORDER = ['market','training','tavern','library','forge','chapel','arcanum','den','lodge'];
+// cost to reach level L (1..8): gold, stone, timber, + the building's flavour material, + profession level if it has one
+D.BUILD_COST = [null,
+  {prof:1, gold:40, stone:8, timber:8},
+  {prof:3, gold:150, stone:20, timber:15},
+  {prof:6, gold:450, stone:40, timber:30},
+  {prof:10, gold:1100, stone:70, timber:50},
+  {prof:15, gold:2500, stone:110, timber:80},
+  {prof:21, gold:5000, stone:160, timber:120},
+  {prof:28, gold:9500, stone:230, timber:170},
+  {prof:36, gold:17000, stone:320, timber:240},
 ];
-D.POTIONS = [
-  {id:'potion', name:'Potion', icon:'🧪', apo:1, gold:8, mats:{herb:1}, use:{heal:10}, desc:'Heals 10 HP. Used automatically below 35% HP.'},
-  {id:'ether', name:'Ether', icon:'💧', apo:2, gold:20, mats:{herb:1, gel:1}, use:{mp:5}, desc:'Restores 5 MP. Used automatically when a caster runs dry.'},
-  {id:'phoenix_down', name:'Phoenix Down', icon:'🪶', apo:3, gold:45, mats:{herb:2, bone:1}, use:{revive:.5}, desc:'Revives a fallen ally at 50% HP during battle.'},
-  {id:'hi_potion', name:'Hi-Potion', icon:'⚗️', apo:4, gold:40, mats:{lily:1, herb:1}, use:{heal:30}, desc:'Heals 30 HP. Used before regular Potions.'},
-  {id:'elixir_might', name:'Tonic of Might', icon:'💪', apo:2, gold:30, mats:{herb:2, gel:2}, elixir:{str:2}, battles:25, desc:'Party +2 STR for 25 battles.'},
-  {id:'elixir_ward', name:'Ironbark Draught', icon:'🛡️', apo:3, gold:60, mats:{herb:2, timber:2}, elixir:{def:2}, battles:25, desc:'Party +2 DEF for 25 battles.'},
-  {id:'elixir_mind', name:'Sage Draught', icon:'🧠', apo:5, gold:150, mats:{lily:2, silk:2}, elixir:{mag:3, mp:3}, battles:30, desc:'Party +3 MAG, +3 MP for 30 battles.'},
-  {id:'elixir_swift', name:'Quicksilver', icon:'⚡', apo:6, gold:300, mats:{ember:2, frost:1}, elixir:{agi:4}, battles:30, desc:'Party +4 AGI for 30 battles.'},
-  {id:'elixir_hero', name:'Hero\'s Elixir', icon:'🌟', apo:8, gold:1200, mats:{dscale:1, ecto:3}, elixir:{str:5, def:5, mag:5, agi:5}, battles:40, desc:'Party +5 to all stats for 40 battles.'},
-];
-D.POTION = {}; D.POTIONS.forEach(p => D.POTION[p.id] = p);
-D.FOOD = {}; D.FOODS.forEach(f => D.FOOD[f.id] = f);
-// Guild Hall mentors
+D.BUILD_MATS = { // flavour material for levels 2..8 (amount = 3 × level)
+  market:  ['copper','copper','iron','lily','ember','frost','dscale'],
+  training:['fur','copper','iron','iron','ember','frost','dscale'],
+  tavern:  ['herb','fur','silk','lily','ember','frost','ecto'],
+  library: ['herb','silk','silk','lily','ecto','frost','ecto'],
+  forge:   ['copper','copper','iron','iron','ember','frost','dscale'],
+  chapel:  ['herb','silk','silk','lily','ember','ecto','dscale'],
+  arcanum: ['quartz','silk','iron','lily','ember','frost','dscale'],
+  den:     ['fur','silk','iron','lily','ecto','ecto','dscale'],
+  lodge:   ['fur','timber','silk','lily','ember','frost','dscale'],
+};
+
+/* ---------------- stamina ----------------
+   Each hero has stamina. Every battle costs 1 (a boss costs 4). When anyone runs out, the party walks home to rest.
+   In town stamina recovers; resting recovers twice as fast. Endurance (trained at the Training Grounds) raises the cap and recovery. */
+D.STAM = {base:20, perLv:3, battle:1, boss:4, regenSec:45, restMult:2, regenPerLv:.04, minDepart:5};
+
+/* ---------------- mentors ---------------- 
+   Training under a mentor (in town) slowly raises a bonus stat and lowers another. Rank 1 opens the mentor's job as a SUBJOB.
+   Rank 3 lets advanced jobs (Paladin, Spellblade, …) be taken as a main job. */
 D.MENTORS = [
-  {id:'knight', name:'Sir Aldric', job:'knight', gl:1, desc:'Knight mentor: +1 JP per win for Knights; unlocks Knight tier-3 skills.'},
-  {id:'priest', name:'Mother Sela', job:'priest', gl:1, desc:'Priest mentor: +1 JP per win for Priests; unlocks Priest tier-3 skills.'},
-  {id:'mage', name:'Magister Vey', job:'mage', gl:2, desc:'Mage mentor: +1 JP per win for Mages; unlocks Mage tier-3 skills.'},
-  {id:'thief', name:'Quickfinger Pell', job:'thief', gl:2, desc:'Thief mentor: +1 JP per win for Thieves; unlocks Thief tier-3 skills.'},
-  {id:'ranger', name:'Warden Ysolde', job:'ranger', gl:3, desc:'Ranger mentor: +1 JP per win for Rangers; unlocks Ranger tier-3 skills.'},
-  {id:'paladin', name:'Lord Commander Brann', job:'paladin', gl:4, desc:'Unlocks the Paladin job (Martial 4 + Holy 3) and trains it.'},
-  {id:'spellblade', name:'Duelist Kaia', job:'spellblade', gl:5, desc:'Unlocks the Spellblade job (Martial 4 + Arcane 3) and trains it.'},
-  {id:'druid', name:'Elder Moss', job:'druid', gl:6, desc:'Unlocks the Druid job (Wild 4 + Holy 3) and trains it.'},
-  {id:'assassin', name:'The Whisper', job:'assassin', gl:7, desc:'Unlocks the Assassin job (Shadow 4 + Wild 3) and trains it.'},
-  {id:'warlock', name:'Morwen the Pale', job:'warlock', gl:8, desc:'Unlocks the Warlock job (Arcane 4 + Shadow 3) and trains it.'},
+  {id:'aldric', name:'Sir Aldric', place:'training', job:'knight', plus:'def', minus:'agi', need:1, line:'Stand your ground. Speed is for people who expect to miss.'},
+  {id:'brann', name:'Lord Commander Brann', place:'training', job:'paladin', plus:'hp', minus:'agi', need:3, line:'A shield is a promise. Keep it.'},
+  {id:'dorrin', name:'Dorrin Anvilhand', place:'forge', job:'knight', plus:'str', minus:'mag', need:1, line:'Swing like you mean it. Think later.'},
+  {id:'kaia', name:'Duelist Kaia', place:'forge', job:'spellblade', plus:'str', minus:'def', need:3, line:'Steel and spell are one motion. Again.'},
+  {id:'sela', name:'Mother Sela', place:'chapel', job:'priest', plus:'mag', minus:'str', need:1, line:'Mend first. The fight can wait a breath.'},
+  {id:'ansel', name:'Brother Ansel', place:'chapel', job:'paladin', plus:'def', minus:'mag', need:3, line:'Faith is a wall, and walls are built slowly.'},
+  {id:'vey', name:'Magister Vey', place:'arcanum', job:'mage', plus:'mag', minus:'hp', need:1, line:'Mind the formula. Fire forgives nothing.'},
+  {id:'morwen', name:'Morwen the Pale', place:'arcanum', job:'warlock', plus:'mp', minus:'def', need:3, line:'Every power has a price. Pay it gladly.'},
+  {id:'pell', name:'Quickfinger Pell', place:'den', job:'thief', plus:'agi', minus:'hp', need:1, line:'Never be where the blow lands.'},
+  {id:'whisper', name:'The Whisper', place:'den', job:'assassin', plus:'str', minus:'def', need:3, line:'…'},
+  {id:'ysolde', name:'Warden Ysolde', place:'lodge', job:'ranger', plus:'agi', minus:'mp', need:1, line:'Read the wind, then loose.'},
+  {id:'moss', name:'Elder Moss', place:'lodge', job:'druid', plus:'hp', minus:'str', need:3, line:'Roots first. Then the storm.'},
 ];
 D.MENTOR = {}; D.MENTORS.forEach(m => D.MENTOR[m.id] = m);
-// Bestiary: kills needed per knowledge tier; library level needed per tier; enemy stat reduction per tier
+D.MENTOR_MAX = 10;
+// per rank: bonus grows every rank (hp ×2, mp ×1.5 rounded), minus grows every 3rd rank
+D.MENTOR_PLUS = r => Math.floor((r+1)/2);   // +1 at rank 1, +1 more every 2 ranks (max +5)
+D.MENTOR_MINUS = r => Math.floor(r/3);       // −1 at rank 3, 6, 9
+
+/* ---------------- tavern meals (cooked by the Cooking worker, eaten when the party sets out) ---------------- */
+D.FOODS = [
+  {id:'stew', name:'Rabbit Stew', icon:'🍲', tav:1, cook:1, mats:{herb:2, fur:1}, buff:{str:1}, desc:'+1 STR for one expedition'},
+  {id:'bread', name:'Herb Bread', icon:'🍞', tav:2, cook:4, mats:{herb:4}, buff:{hp:4}, desc:'+4 max HP for one expedition'},
+  {id:'pie', name:'Honey Pie', icon:'🥧', tav:3, cook:8, mats:{herb:4, silk:1}, buff:{agi:2, mag:1}, desc:'+2 AGI, +1 MAG'},
+  {id:'roast', name:"Hunter's Roast", icon:'🍖', tav:4, cook:12, mats:{fur:5, herb:4}, buff:{str:2, def:1}, desc:'+2 STR, +1 DEF'},
+  {id:'chowder', name:'Marsh Chowder', icon:'🥣', tav:5, cook:17, mats:{lily:3, herb:6}, buff:{hp:10, mp:3}, desc:'+10 HP, +3 MP'},
+  {id:'chili', name:'Ember Chili', icon:'🌶️', tav:6, cook:23, mats:{ember:3, fur:6}, buff:{str:3, mag:3}, desc:'+3 STR, +3 MAG'},
+  {id:'feast', name:'Royal Feast', icon:'🍱', tav:7, cook:30, mats:{frost:3, fur:8, herb:10}, buff:{hp:12, str:3, def:3, mag:3, agi:3}, desc:'+12 HP, +3 to all'},
+  {id:'dragon_soup', name:'Dragonfire Broth', icon:'🫕', tav:8, cook:38, mats:{dscale:2, ember:6}, buff:{hp:20, str:5, def:5, mag:5, agi:4}, desc:'+20 HP, +5 STR/DEF/MAG, +4 AGI'},
+];
+D.FOOD = {}; D.FOODS.forEach(f => D.FOOD[f.id] = f);
+D.COOK_SEC = 300; // seconds per meal at Cooking Lv1 (−2% per level, min 90)
+
+/* ---------------- bestiary ----------------
+   Kills teach the Library about a foe. Each tier weakens that foe for good. Tiers past 1 need Library levels.
+   Rare "Gilded" variants (2%) give triple gold and count for the zone collection. */
 D.BEAST_TIERS = [
   {kills:0, lib:0, red:0, label:'Unknown'},
-  {kills:10, lib:1, red:.05, label:'Studied: stats shown, −5% ATK/DEF/AGI'},
-  {kills:30, lib:2, red:.10, label:'Known: weakness shown, −10% ATK/DEF/AGI'},
-  {kills:80, lib:4, red:.15, label:'Mastered: −15% ATK/DEF/AGI, +25% weakness damage'},
-  {kills:200, lib:6, red:.22, label:'Legendary lore: −22% ATK/DEF/AGI, +50% weakness damage'},
+  {kills:10, lib:1, red:.05, label:'Studied — stats shown, −5% ATK/DEF/AGI'},
+  {kills:30, lib:2, red:.10, label:'Known — weakness shown, −10% ATK/DEF/AGI', dia:1},
+  {kills:80, lib:3, red:.15, label:'Mastered — −15% ATK/DEF/AGI, +25% weakness damage', dia:3},
+  {kills:200, lib:5, red:.22, label:'Legend — −22% ATK/DEF/AGI, +50% weakness damage', dia:5},
 ];
+D.VARIANT_CHANCE = .02;
+// Zone collection: every foe Mastered (tier 3) + every Gilded variant defeated + boss beaten = the zone's relic.
 
 D.TUTORIAL = [
-  {id:'fight', text:'Your party fights on its own. Watch the battle log: every win gives XP, gold and AP.', done:s=>s.stats.wins>=3},
-  {id:'party', text:'Open 👥 Party. Each piece of gear teaches skills. The bars show progress; learn one to keep it forever.', done:s=>s.flags.sawParty},
-  {id:'village', text:'Open 🏘️ Village and assign a worker to a profession. Professions level while you fight, even offline.', done:s=>Object.values(s.workers).some(Boolean)},
-  {id:'shop', text:'Buy gear at the Smithy to learn new skills. Different gear = different skill types.', done:s=>s.stats.bought>=1},
-  {id:'learn', text:'Keep winning until someone learns a skill permanently (AP bar fills).', done:s=>s.stats.learned>=1},
-  {id:'boss', text:'Win enough battles in a zone and its boss appears on the 🗺️ Map. Beat it to unlock the next zone.', done:s=>s.zones[0].boss},
-  {id:'job', text:'3 learned skills of one type (e.g. 3 Martial) unlock a Job. Jobs earn JP for a skill tree.', done:s=>s.chars.some(c=>c.job)},
+  {id:'town', text:'Welcome to Lanternfall. Tap the 🏛️ Town Hall and give your one worker a job (Mining digs up 💎).', done:s=>Object.keys(s.workers).length>0},
+  {id:'depart', text:'Tap the 🔥 campfire (or the 🗺️ Map) and set out for Greenhollow Meadow. Battles only start when you choose to go.', done:s=>s.stats.departs>=1},
+  {id:'win', text:'Your party fights on its own. Wins give XP, gold, AP (skill progress) and JP. They never drop items.', done:s=>s.stats.wins>=5},
+  {id:'learn', text:'Each piece of gear teaches skills. Keep fighting until someone learns one for good (👥 Party → Skills).', done:s=>s.stats.learned>=1},
+  {id:'job', text:'One learned skill of a type opens a job. 👥 Party → Job: pick it, then spend JP on the grid.', done:s=>s.chars.some(c=>c.job)},
+  {id:'stamina', text:'When stamina runs out the party walks home. In town, heroes rest, train Endurance, or study with mentors.', done:s=>s.stats.returns>=1},
+  {id:'pull', text:'Gear comes from the gear halls. Visit the 🔥 Forge and pull with 💎 Diamonds.', done:s=>s.stats.pulls>=1},
+  {id:'boss', text:'Win enough battles in a zone and its boss appears. Beat it to open the next zone.', done:s=>s.zones[0].boss},
 ];
 
 /* ---------------- gear gacha ----------------
-   Gear has a rarity. Five gear halls (built with Masonry) each hold gear for one skill type. Upgrading a hall improves its rates
-   and unlocks higher-tier gear (capped by how far you've travelled). Pulls cost 💎 Diamonds (Mining, bosses, rare battle finds). */
+   Gear has a rarity. Five gear halls each hold gear for one skill type. Upgrading a hall improves its rates
+   and unlocks higher-tier gear (capped by how far you've travelled). Pulls cost 💎 Diamonds (the Mine, first boss kills, bestiary rewards). */
 D.RARITY = [
-  {name:'Common', short:'C', color:'#c9ced8', mult:1, ap:0, sell:1},
-  {name:'Uncommon', short:'U', color:'#6fe08a', mult:1.3, ap:0, sell:1.6},
-  {name:'Rare', short:'R', color:'#5fa8ff', mult:1.7, ap:1, sell:3},
-  {name:'Epic', short:'E', color:'#c77dff', mult:2.3, ap:2, sell:6},
-  {name:'Legendary', short:'L', color:'#ffb547', mult:3.2, ap:3, sell:12},
+  {name:'Common', short:'C', color:'#8a8f98', mult:1, ap:0, sell:1},
+  {name:'Uncommon', short:'U', color:'#3f8f4f', mult:1.3, ap:0, sell:1.6},
+  {name:'Rare', short:'R', color:'#2f6fbf', mult:1.7, ap:1, sell:3},
+  {name:'Epic', short:'E', color:'#8a3fbf', mult:2.3, ap:2, sell:6},
+  {name:'Legendary', short:'L', color:'#c27a12', mult:3.2, ap:3, sell:12},
 ];
 D.BANNERS = {
-  forge:{name:'Forge', icon:'🔥', type:'martial', jobs:'Knight · Paladin · Spellblade', desc:'Swords, axes and heavy armor for front-liners.', art:'⚔️'},
-  chapel:{name:'Chapel', icon:'⛪', type:'holy', jobs:'Priest · Paladin · Druid', desc:'Rods, robes and charms for healers.', art:'✨'},
-  arcanum:{name:'Arcanum', icon:'🔮', type:'arcane', jobs:'Mage · Spellblade · Warlock', desc:'Staves and robes for spellcasters.', art:'🪄'},
-  den:{name:'Thieves\' Den', icon:'🗝️', type:'shadow', jobs:'Thief · Assassin · Warlock', desc:'Daggers and cloaks for rogues.', art:'🗡️'},
-  lodge:{name:'Hunter\'s Lodge', icon:'🏹', type:'wild', jobs:'Ranger · Druid · Assassin', desc:'Bows and charms for rangers.', art:'🌿'},
+  forge:{name:'Forge', icon:'🔥', type:'martial', jobs:'Knight · Paladin · Spellblade', desc:'Swords, axes and heavy armor for front-liners.'},
+  chapel:{name:'Chapel', icon:'⛪', type:'holy', jobs:'Priest · Paladin · Druid', desc:'Rods, robes and charms for healers.'},
+  arcanum:{name:'Arcanum', icon:'🔮', type:'arcane', jobs:'Mage · Spellblade · Warlock', desc:'Staves and robes for spellcasters.'},
+  den:{name:"Thieves' Den", icon:'🗝️', type:'shadow', jobs:'Thief · Assassin · Warlock', desc:'Daggers and cloaks for rogues.'},
+  lodge:{name:"Hunter's Lodge", icon:'🏹', type:'wild', jobs:'Ranger · Druid · Assassin', desc:'Bows and charms for rangers.'},
 };
 D.BANNER_ORDER = ['forge','chapel','arcanum','den','lodge'];
 // rarity rates (%) by hall level 1..8: [Common, Uncommon, Rare, Epic, Legendary]
@@ -547,29 +573,7 @@ D.BANNER_RATES = [null,
   [72,22,5,0.9,0.1],[66,25,7,1.7,0.3],[60,27,10,2.5,0.5],[54,29,12.5,3.7,0.8],
   [48,30,15.5,5.3,1.2],[42,31,18.5,6.9,1.6],[37,31,21,8.8,2.2],[32,31,23.5,10.5,3.0]];
 D.PULL_COST = 5; D.PULL10_COST = 45; D.PITY = 60; // Epic or better guaranteed by pull 60; every 10-pull has a Rare or better
-D.BANNER_COST = [null,
-  {prof:2, gold:60, stone:6},
-  {prof:4, gold:150, stone:12},
-  {prof:7, gold:400, stone:25},
-  {prof:11, gold:900, stone:40},
-  {prof:16, gold:1800, stone:60},
-  {prof:22, gold:3500, stone:85},
-  {prof:29, gold:6500, stone:115},
-  {prof:37, gold:11000, stone:150},
-];
-D.BANNER_MATS = {
-  forge:  ['copper','copper','copper','scale','ember','frost','dscale'],
-  chapel: ['herb','bone','bone','lily','ember','ecto','dscale'],
-  arcanum:['gel','silk','silk','lily','ember','frost','dscale'],
-  den:    ['fur','silk','bone','scale','ecto','ecto','dscale'],
-  lodge:  ['fur','timber','timber','scale','ember','frost','dscale'],
-};
-D.MINING = [ // what a Mining villager digs up: one every `every` seconds (faster with level), from minLv
-  {mat:'diamond', every:240, min:60, minLv:1},
-  {mat:'stone', every:30, min:10, minLv:1},
-  {mat:'quartz', every:45, min:15, minLv:1},
-  {mat:'copper', every:70, min:20, minLv:3},
-  {mat:'silver', every:120, min:40, minLv:6},
-  {mat:'nugget', every:300, min:90, minLv:12},
-];
-D.TUTORIAL.splice(3, 1, {id:'gacha', text:'Gear comes from the gear halls. Village → 💎 Gear Halls → pull at the Forge with Diamonds. Mining digs up more Diamonds.', done:s=>s.stats.pulls>=1});
+D.START_DIAMONDS = 10;
+
+D.TOWN_POS = {x:52, y:82}; // Lanternfall on the world map
+if(typeof module!=='undefined') module.exports={D};
