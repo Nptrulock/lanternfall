@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Lanternfall headless test (Chrome + touch emulation) at iPhone, iPad landscape and desktop.
+"""Lanternfall v2 headless test (Chrome + touch emulation) at iPhone, iPad landscape and desktop.
 usage: python3 tools/test.py [BASE_URL] [sizes]
-Covers: party creation, live battle, learning a skill, gear-hall gacha (x1, x10, pity/rates, building a hall), Mining diamonds,
-village workers + profession tick + building, smithy purchase + equip, job unlock + node, boss challenge, party wipe + revive,
-offline welcome-back, export/import, hard reset, save migration, render guard, where-to-get sheet, no horizontal overflow,
-zero console errors. The __debug fast-forward hooks are test-only (no UI)."""
+Covers: 3-hero party creation, opening in town with NO battle, one worker at start + rising hire cost, world map, setting out,
+slow multi-round battles, battles drop NO items/materials, stamina drain -> return home, skill learning, job grid + lock-in kept
+across a job switch (and a reload), mentors -> subjob, Endurance training, gear-hall pulls, Bravely-style shop, bestiary,
+offline welcome-back, v1 save -> new-journey notice, export/import, hard reset, render guard, no horizontal overflow,
+zero console errors. Shots of the key screens go to shots/. The __debug hooks are test-only (no UI)."""
 import sys, os
 from playwright.sync_api import sync_playwright
 BASE = sys.argv[1] if len(sys.argv) > 1 else 'http://127.0.0.1:8795/'
@@ -14,18 +15,26 @@ os.makedirs(SHOTS, exist_ok=True)
 SIZES = [('iphone', 390, 844, True, 3), ('ipad-land', 1180, 820, True, 2), ('desktop', 1440, 900, False, 1)]
 res = []; errs = []; bad = []
 def rec(n, ok, info=''):
-    res.append(bool(ok)); print(('PASS ' if ok else 'FAIL ') + n + (('  ' + str(info)[:300]) if info and not ok else ''), flush=True)
+    res.append(bool(ok)); print(('PASS ' if ok else 'FAIL ') + n + (('  ' + str(info)[:400]) if info and not ok else ''), flush=True)
 def tap(pg, sel, i=0, touch=True):
     loc = pg.locator(sel).nth(i)
-    loc.evaluate("e=>e.scrollIntoView({block:'center'})"); pg.wait_for_timeout(120)
+    loc.evaluate("e=>e.scrollIntoView({block:'center'})"); pg.wait_for_timeout(150)
     bb = loc.bounding_box()
     if touch: pg.touchscreen.tap(bb['x'] + bb['width'] / 2, bb['y'] + bb['height'] / 2)
     else: pg.mouse.click(bb['x'] + bb['width'] / 2, bb['y'] + bb['height'] / 2)
-    pg.wait_for_timeout(250)
+    pg.wait_for_timeout(300)
 def S(pg, expr): return pg.evaluate(f"(()=>{{const S=__G.S;return {expr}}})()")
-def shot(pg, tag, name): pg.screenshot(path=f'{SHOTS}/{tag}-{name}.png')
-def tab(pg, t, touch):
-    if pg.locator(f'#tabs [data-a=tab][data-t={t}]').count(): tap(pg, f'#tabs [data-a=tab][data-t={t}]', 0, touch)
+def shot(pg, tag, name, full=False):
+    pg.evaluate("window.scrollTo(0,0)") if not full else None
+    pg.screenshot(path=f'{SHOTS}/{tag}-{name}.png', full_page=full)
+def nav(pg, t, touch): tap(pg, f'#nav [data-a=tab][data-t={t}]', 0, touch); pg.wait_for_timeout(250)
+def place(pg, p, touch):
+    nav(pg, 'town', touch)
+    if pg.locator('.phead .back').count(): tap(pg, '.phead .back', 0, touch)
+    tap(pg, f'.townmap .pin[data-p={p}]', 0, touch)
+def close_modal(pg, touch):
+    if pg.locator('#modal .mclose').count(): tap(pg, '#modal .mclose', 0, touch)
+REFILL = "__G.S.chars.forEach(c=>c.stam=maxStam(c))"
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--no-sandbox'])
     for tag, W, H, mob, dpr in SIZES:
@@ -37,138 +46,159 @@ with sync_playwright() as p:
         pg.on('console', lambda m, t=tag: m.type == 'error' and errs.append(t + ' console ' + m.text))
         pg.on('response', lambda r, t=tag: r.status >= 400 and bad.append(t + f' {r.status} ' + r.url))
         pg.goto(BASE, wait_until='networkidle'); pg.evaluate("localStorage.clear()"); pg.reload(wait_until='networkidle'); pg.wait_for_timeout(600)
-        # ---------- party creation ----------
-        rec(f'{tag} create screen shows 4 hero slots + 6 races each', pg.locator('.cslot').count() == 4 and pg.locator('.cslot').nth(0).locator('.race').count() == 6)
-        pg.locator('#cn0').fill('Noah'); tap(pg, '[data-a=crace][data-i="3"][data-r=orc]', 0, touch); tap(pg, '[data-a=crace][data-i="1"][data-r=beastkin]', 0, touch)
-        shot(pg, tag, '01-create')
-        tap(pg, '[data-a=begin]', 0, touch); pg.wait_for_timeout(500)
-        st = S(pg, "({started:S.started,names:S.chars.map(c=>c.name),races:S.chars.map(c=>c.race),hp:S.chars.map(c=>c.hp)})")
-        rec(f'{tag} party created (name + races kept, HP set)', st['started'] and st['names'][0] == 'Noah' and st['races'] == ['human', 'beastkin', 'dwarf', 'orc'] and all(h > 0 for h in st['hp']), st)
-        if W < 1000: rec(f'{tag} phone layout opens on the battle screen', pg.locator('#scene').is_visible())
-        # ---------- live battle ----------
-        pg.wait_for_timeout(9000)
-        st = S(pg, "({wins:S.stats.wins,log:S.log.length,enemies:document.querySelectorAll('#enemies .enemy').length,pw:document.querySelectorAll('.pwin').length,maxHp:S.chars.map(c=>calc(c).maxHp)})")
-        rec(f'{tag} live auto-battle runs (log, enemies, 4 status windows)', st['log'] > 3 and st['pw'] == 4 and (st['wins'] >= 1 or st['enemies'] >= 1), st)
-        rec(f'{tag} small numbers at the start: every hero has 20 HP or less', all(h <= 20 for h in st['maxHp']), st)
-        shot(pg, tag, '02-battle')
-        # ---------- learn a skill (test-only fast forward) ----------
-        pg.evaluate("__debug.battles(14)")
-        st = S(pg, "({learned:S.stats.learned,list:S.chars.map(c=>Object.keys(c.learned))})")
-        rec(f'{tag} winning battles fills AP and learns a skill permanently', st['learned'] >= 1, st)
-        tab(pg, 'party', touch); pg.wait_for_timeout(300)
-        rec(f'{tag} party panel shows stats + learning progress', pg.locator('.hero-card .stats').count() == 1)
-        shot(pg, tag, '03-party')
-        # ---------- village: workers, profession tick, build ----------
-        tab(pg, 'village', touch); pg.wait_for_timeout(300)
-        tap(pg, '[data-a=worker][data-p=masonry]', 0, touch)
-        rec(f'{tag} assign a villager to Masonry', S(pg, "!!S.workers.masonry"))
-        pg.evaluate("__debug.profs(400)")
-        st = S(pg, "({lv:S.profs.masonry.lv,stone:S.mats.stone||0})")
-        rec(f'{tag} profession ticks: Masonry levels and quarries Stone', st['lv'] >= 3 and st['stone'] >= 10, st)
-        tap(pg, '[data-a=worker][data-p=cooking]', 0, touch)
-        pg.evaluate("__debug.profs(5)"); pg.wait_for_timeout(1400)
-        tap(pg, '[data-a=build][data-b=tavern]', 0, touch)
-        rec(f'{tag} build the Tavern (building visibly upgrades)', S(pg, "S.buildings.tavern") == 1 and pg.locator('.village-scene:not(.halls) .bld.t1').count() >= 2)
-        shot(pg, tag, '04-village')
-        tap(pg, '[data-a=matInfo]', 0, touch)
-        rec(f'{tag} material chip opens a where-to-get sheet', pg.locator('#modal .mbox h3', has_text='Where to get it').count() == 1)
-        shot(pg, tag, '05-where-to-get')
-        tap(pg, '#modal .mclose', 0, touch)
-        # ---------- gear gacha ----------
-        tap(pg, '[data-a=vview][data-v=gacha]', 0, touch); pg.wait_for_timeout(300)
-        rec(f'{tag} gear hall shows rates table + pity + gear pool', pg.locator('table.rates').count() == 1 and pg.locator('.pool .pi').count() >= 2)
-        shot(pg, tag, '06-gear-hall')
-        d0 = S(pg, "S.diamonds"); n0 = S(pg, "S.inv.length")
-        tap(pg, '[data-a=pull][data-n="1"]', 0, touch); pg.wait_for_timeout(2400)
-        rec(f'{tag} pull ×1 spends 5 diamonds, adds gear, plays the reveal', S(pg, "S.diamonds") == d0 - 5 and S(pg, "S.inv.length") >= n0 + 1 and pg.locator('#modal .pcard').count() == 1, (d0, S(pg, "S.diamonds")))
-        tap(pg, '#modal .mclose', 0, touch)
-        pg.evaluate("__G.S.diamonds=45"); pg.wait_for_timeout(1300)
-        tap(pg, '[data-a=pull][data-n="10"]', 0, touch); pg.wait_for_timeout(3800)
+        # ---------- party creation (3 heroes) ----------
+        rec(f'{tag} create screen shows 3 hero slots with 6 races each', pg.locator('.cslot').count() == 3 and pg.locator('.cslot').nth(0).locator('.race').count() == 6)
+        pg.locator('#cn0').fill('Noah'); tap(pg, '[data-a=crace][data-i="2"][data-r=orc]', 0, touch)
+        shot(pg, tag, '00-create')
+        tap(pg, '[data-a=begin]', 0, touch); pg.wait_for_timeout(400)
+        close_modal(pg, touch); pg.wait_for_timeout(2500)
+        st = S(pg, "({started:S.started,n:S.chars.length,names:S.chars.map(c=>c.name),races:S.chars.map(c=>c.race),loc:S.loc,battle:!!S.battle,battles:S.stats.battles,tab:__debug.ui.tab})")
+        rec(f'{tag} party of 3 created (names + races kept)', st['started'] and st['n'] == 3 and st['names'][0] == 'Noah' and st['races'] == ['human', 'elf', 'orc'], st)
+        rec(f'{tag} game opens in TOWN with no battle running', st['loc'] == 'town' and not st['battle'] and st['battles'] == 0 and st['tab'] == 'town' and pg.locator('.townmap').is_visible() and pg.locator('#scene').count() == 0, st)
+        rec(f'{tag} town map shows tappable buildings', pg.locator('.townmap .pin').count() >= 10)
+        shot(pg, tag, '01-town-start')
+        # ---------- workers: one at the start ----------
+        st = S(pg, "({hired:S.hired,slots:workerSlots(),used:workersUsed(),cost:hireCost()})")
+        rec(f'{tag} exactly ONE worker at the start; the next costs gold', st['hired'] == 1 and st['slots'] == 1 and st['used'] == 0 and st['cost'] and st['cost'] > 0, st)
+        place(pg, 'hall', touch)
+        tap(pg, '[data-a=work][data-p=mining][data-d="1"]', 0, touch)
+        rec(f'{tag} assign the worker to Mining', S(pg, "S.workers.mining===1"))
+        rec(f'{tag} a second assignment is blocked (no free worker)', pg.locator('[data-a=work][data-p=foraging][data-d="1"]').is_disabled())
+        shot(pg, tag, '02-town-hall')
+        # ---------- world map ----------
+        nav(pg, 'map', touch)
+        rec(f'{tag} world map: 8 zone pins, 7 locked, town marked', pg.locator('.worldmap .zpin').count() == 8 and pg.locator('.worldmap .zpin.locked').count() == 7 and pg.locator('.tpin').count() == 1)
+        shot(pg, tag, '03-world-map')
+        # ---------- set out: slow battles ----------
+        tap(pg, '.zc [data-a=depart][data-z="0"]', 0, touch); pg.wait_for_timeout(500)
+        rec(f'{tag} choosing a zone sets out; battle screen shows 3 DQ windows', S(pg, "S.loc==='exp'") and pg.locator('#pwins .pwin').count() == 3)
+        a0 = S(pg, "S.log.length"); pg.wait_for_timeout(5000)
+        st = S(pg, "({wins:S.stats.wins,acts:S.log.length,foes:S.battle?S.battle.enemies.length:0})")
+        rec(f'{tag} pacing: ~1 action per 1.2 s (no instant clears)', st['wins'] <= 1 and (st['acts'] - a0) <= 12, (st, a0))
+        shot(pg, tag, '04-mid-battle')
+        # ---------- battles drop no items ----------
+        st0 = S(pg, "({inv:S.inv.length,mats:JSON.stringify(S.mats),gold:S.gold,xp:S.chars.map(c=>c.xp+c.lv*1000),dia:S.diamonds})")
+        pg.evaluate("__G.S.workers={};" + REFILL + ";__debug.battles(12)")
+        st1 = S(pg, "({inv:S.inv.length,mats:JSON.stringify(S.mats),gold:S.gold,xp:S.chars.map(c=>c.xp+c.lv*1000),rounds:S.stats.rounds,battles:S.stats.battles,wins:S.stats.wins})")
+        rec(f'{tag} battles give gold + XP but NO items or materials', st1['inv'] == st0['inv'] and st1['mats'] == st0['mats'] and st1['gold'] > st0['gold'] and st1['xp'] != st0['xp'], (st0, st1))
+        rec(f'{tag} fights last several rounds on average', st1['battles'] and st1['rounds'] / st1['battles'] >= 3, st1)
+        # ---------- stamina ----------
+        pg.evaluate("if(__G.S.loc!=='exp'){" + REFILL + ";depart(0);}")
+        s0 = S(pg, "S.chars.map(c=>c.stam)"); pg.evaluate("__debug.battles(3)"); s1 = S(pg, "S.chars.map(c=>c.stam)")
+        rec(f'{tag} every battle drains stamina', all(b2 < a2 for a2, b2 in zip(s0, s1)), (s0, s1))
+        pg.evaluate("__debug.battles(400)")
+        st = S(pg, "({loc:S.loc,reason:S.lastExp&&S.lastExp.reason,stam:S.chars.map(c=>Math.floor(c.stam))})")
+        rec(f'{tag} out of stamina (or fallen) -> party walks home, automation stops', st['loc'] == 'town' and st['reason'] in ('tired', 'wipe'), st)
+        nav(pg, 'camp', touch)
+        rec(f'{tag} campfire shows stamina + rest/train/mentor choices', pg.locator('.campc').count() == 3 and pg.locator('.campc .bar.stam').count() == 3 and pg.locator('[data-sel=act]').count() == 3)
+        shot(pg, tag, '05-camp-stamina')
+        # ---------- learn a skill ----------
+        pg.evaluate("(()=>{for(let k=0;k<12&&!__G.S.stats.learned;k++){" + REFILL + ";__G.S.loc='town';depart(0);__debug.battles(25);goHome('manual');}})()")
+        rec(f'{tag} winning battles fills AP until a skill is learned', S(pg, "S.stats.learned>=1"), S(pg, "S.chars.map(c=>c.ap)"))
+        # ---------- jobs: grid + lock-in ----------
+        pg.evaluate("(()=>{const c=__G.S.chars[0];c.learned.power_strike=1;c.learned.heal=1;dirty();})()")
+        nav(pg, 'party', touch); tap(pg, '[data-a=sel][data-i="0"]', 0, touch); tap(pg, '[data-a=htab][data-k=job]', 0, touch)
+        tap(pg, '[data-a=jobView][data-j=knight]', 0, touch); tap(pg, '[data-a=setJob][data-j=knight]', 0, touch)
+        rec(f'{tag} first job is easy: 1 Martial skill unlocks Knight', S(pg, "S.chars[0].job") == 'knight')
+        pg.evaluate("__G.S.chars[0].jobs.knight.jp=60")
+        for nid in ['0.0', '0.1', '0.2']:
+            tap(pg, f'.sgrid .node[data-n="{nid}"]', 0, touch); tap(pg, f'[data-a=buyNode][data-n="{nid}"]', 0, touch)
+        rec(f'{tag} spend JP on sphere-grid nodes up to an ability', S(pg, "['0.0','0.1','0.2'].every(n=>S.chars[0].jobs.knight.nodes[n])"), S(pg, "S.chars[0].jobs.knight"))
+        tap(pg, '[data-a=lock][data-n="0.2"]', 0, touch)
+        rec(f'{tag} lock in ONE Knight ability (shown in the job UI)', S(pg, "S.chars[0].locks.knight") == '0.2' and pg.locator('.locked-pick').count() == 1 and pg.locator('.sgrid .node.locked').count() == 1)
+        shot(pg, tag, '06-job-grid-lockin', True)
+        tap(pg, '[data-a=jobView][data-j=priest]', 0, touch); tap(pg, '[data-a=setJob][data-j=priest]', 0, touch)
+        st = S(pg, "({job:S.chars[0].job,locked:lockedNodes(S.chars[0]).map(x=>x.jid+':'+x.n.id),dr:calcBase(S.chars[0]).f.dr||0,hp3:calcBase(S.chars[0]).hp})")
+        rec(f'{tag} lock-in persists across a job switch (Iron Wall still active as a Priest)', st['job'] == 'priest' and st['locked'] == ['knight:0.2'] and st['dr'] >= 1, st)
+        pg.evaluate("save()"); pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800); close_modal(pg, touch)
+        st = S(pg, "({job:S.chars[0].job,lock:S.chars[0].locks.knight,dr:calcBase(S.chars[0]).f.dr||0})")
+        rec(f'{tag} lock-in survives a reload', st['job'] == 'priest' and st['lock'] == '0.2' and st['dr'] >= 1, st)
+        # ---------- mentors -> subjob ----------
+        place(pg, 'training', touch); tap(pg, '[data-a=ptab][data-k=mentors]', 0, touch)
+        tap(pg, '.mentor [data-a=act][data-i="1"][data-v="m:aldric"]', 0, touch)
+        rec(f'{tag} send a hero to study with a mentor', S(pg, "S.chars[1].act") == 'm:aldric')
+        pg.evaluate("__debug.town(6000)")
+        st = S(pg, "({r:mentorRank(S.chars[1],'aldric'),sub:subjobOk(S.chars[1],'knight'),me:mentorEff(S.chars[1])})")
+        rec(f'{tag} mentor ranks grow a bonus (+DEF) with a minus (-AGI) and open the Knight subjob', st['r'] >= 3 and st['sub'] and st['me'].get('def', 0) > 0 and st['me'].get('agi', 0) < 0, st)
+        shot(pg, tag, '07-mentors', True)
+        # ---------- training grounds ----------
+        tap(pg, '[data-a=ptab][data-k=train]', 0, touch); tap(pg, '[data-a=act][data-i="2"][data-v=train]', 0, touch)
+        m0 = S(pg, "maxStam(S.chars[2])"); pg.evaluate("__debug.town(1500)")
+        st = S(pg, "({lv:S.chars[2].endLv,ms:maxStam(S.chars[2])})")
+        rec(f'{tag} Endurance training raises max stamina', st['lv'] >= 2 and st['ms'] > m0, (m0, st))
+        shot(pg, tag, '08-training-grounds', True)
+        # ---------- gear hall ----------
+        place(pg, 'forge', touch)
+        rec(f'{tag} gear hall shows rates, pity and pool', pg.locator('table.rates').count() == 1 and pg.locator('.pool .pi').count() >= 2)
+        shot(pg, tag, '09-gacha-hall')
+        pg.evaluate("__G.S.diamonds=50"); pg.wait_for_timeout(1100)
+        n0 = S(pg, "S.inv.length"); tap(pg, '[data-a=pull][data-n="1"]', 0, touch); pg.wait_for_timeout(1800)
+        rec(f'{tag} pull x1 spends 5 diamonds and adds gear', S(pg, "S.diamonds") == 45 and S(pg, "S.inv.length") == n0 + 1 and pg.locator('#modal .pcard').count() == 1)
+        close_modal(pg, touch)
+        tap(pg, '[data-a=pull][data-n="10"]', 0, touch); pg.wait_for_timeout(3200)
         rs = S(pg, "S.inv.slice(-10).map(u=>u.r)")
-        rec(f'{tag} pull ×10 reveals 10 cards with a Rare+ guaranteed', pg.locator('#modal .pcard').count() == 10 and max(rs) >= 2, rs)
-        shot(pg, tag, '07-pull-x10')
-        tap(pg, '#modal .mclose', 0, touch)
-        pg.evaluate("__G.S.gold+=500;__G.S.mats.stone=(__G.S.mats.stone||0)+50;__G.S.profs.masonry.lv=5")
-        tap(pg, '[data-a=hall][data-b=chapel]', 0, touch); pg.wait_for_timeout(1300)
-        tap(pg, '[data-a=buildHall][data-b=chapel]', 0, touch)
-        rec(f'{tag} build the Chapel gear hall (new banner)', S(pg, "S.banners.chapel") == 1 and pg.locator('[data-a=pull][data-b=chapel]').count() >= 1)
-        pg.evaluate("__G.S.workers={}"); tap(pg, '[data-a=vview][data-v=overview]', 0, touch); tap(pg, '[data-a=worker][data-p=mining]', 0, touch)
-        dd = S(pg, "S.diamonds"); pg.evaluate("__debug.profs(1200)")
-        rec(f'{tag} Mining villager digs up Diamonds + sellable gems', S(pg, "S.diamonds") > dd and S(pg, "(S.mats.quartz||0)") > 0)
-        # ---------- smithy buy + equip ----------
-        pg.evaluate("__G.S.gold+=500"); tap(pg, '[data-a=vview][data-v=smithy]', 0, touch)
-        n0 = S(pg, "S.inv.length"); tap(pg, '[data-a=buy][data-id=charm]', 0, touch)
-        rec(f'{tag} buy basic gear at the Smithy', S(pg, "S.inv.length") == n0 + 1)
-        tab(pg, 'party', touch); tap(pg, '[data-a=sel][data-i="0"]', 0, touch); tap(pg, '[data-a=pview][data-v=gear]', 0, touch); tap(pg, '[data-a=pickSlot][data-s=acc]', 0, touch)
-        tap(pg, '#modal [data-a=equip]', pg.locator('#modal [data-a=equip]').count() - 1, touch)
-        rec(f'{tag} equip an accessory from the bag', S(pg, "S.chars[0].equip.acc!=null"))
-        shot(pg, tag, '08-gear')
-        # ---------- jobs ----------
-        pg.evaluate("Object.assign(__G.S.chars[0].learned,{power_strike:1,toughness:1,iron_skin:1})")
-        tap(pg, '[data-a=pview][data-v=job]', 0, touch); pg.wait_for_timeout(200)
-        tap(pg, '[data-a=setJob][data-j=knight]', 0, touch)
-        rec(f'{tag} 3 Martial skills unlock Knight; choose it', S(pg, "S.chars[0].job") == 'knight')
-        pg.evaluate("__debug.battles(6)"); pg.wait_for_timeout(1400)
-        jp = S(pg, "S.chars[0].jobs.knight.jp")
-        tap(pg, '[data-a=node][data-n=k1]', 0, touch)
-        rec(f'{tag} wins earn JP; buy a job-tree node', jp >= 4 and S(pg, "!!S.chars[0].jobs.knight.nodes.k1"), jp)
-        shot(pg, tag, '09-job-tree')
-        # ---------- map + boss ----------
-        pg.evaluate("__G.S.zones[0].wins=30"); tab(pg, 'map', touch); pg.wait_for_timeout(1400)
-        rec(f'{tag} map shows 8 zones', pg.locator('.card.zone').count() == 8)
-        shot(pg, tag, '10-map')
-        tap(pg, '[data-a=bossZ][data-z="0"]', 0, touch); pg.wait_for_timeout(1800)
-        rec(f'{tag} boss challenge starts the King Slime fight', S(pg, "!!(S.battle&&S.battle.boss)"), S(pg, "S.battle&&S.battle.enemies.map(e=>e.name)"))
-        if W < 1000: tab(pg, 'battle', touch); pg.wait_for_timeout(500)
-        shot(pg, tag, '11-boss')
-        pg.evaluate("(()=>{let g=0;while(__G.S.battle&&g++<500)step();if(__G.S.rest>0)finishRest();})()")
-        # ---------- wipe + easy revive ----------
-        pg.evaluate("(()=>{const S=__G.S;S._z=S.zones.map(z=>z.boss);S.zones.forEach((z,i)=>{if(i<7)z.boss=true});S.zone=7;S.battle=null;S.rest=0;S.auto=true;S.chars.forEach(c=>c.hp=1);startBattle(true);let g=0;while(!S.wiped&&g++<800)step();renderAll();})()")
-        pg.wait_for_timeout(500)
-        st = S(pg, "({wiped:S.wiped,auto:S.auto,hp:S.chars.map(c=>c.hp)})")
-        rec(f'{tag} party wipe pauses automation, heals everyone, shows revive', st['wiped'] and not st['auto'] and all(h > 1 for h in st['hp']) and pg.locator('.wipe').count() == 1, st)
-        shot(pg, tag, '12-wipe')
-        tap(pg, '.wipe [data-a=zone]', 0, touch)
-        rec(f'{tag} one tap: back a zone and resume', S(pg, "!S.wiped && S.auto && S.zone===6"))
-        pg.evaluate("(()=>{const S=__G.S;S.zones.forEach((z,i)=>z.boss=S._z[i]);delete S._z;S.zone=0;S.battle=null})()")
+        rec(f'{tag} pull x10 gives 10 with a Rare+ guaranteed', pg.locator('#modal .pcard').count() == 10 and max(rs) >= 2, rs)
+        shot(pg, tag, '10-pull-x10')
+        close_modal(pg, touch)
+        # ---------- shop ----------
+        pg.evaluate("__G.S.gold+=300"); place(pg, 'market', touch)
+        tap(pg, '.slist tr[data-a=shopSel][data-id=charm]', 0, touch)
+        rec(f'{tag} shop: price/owned columns, tooltip and party comparison', pg.locator('.slist th', has_text='Owned').count() == 1 and pg.locator('.tip .cmpc').count() == 3 and pg.locator('.keeper img').count() == 1)
+        shot(pg, tag, '11-shop', True)
+        n0 = S(pg, "S.inv.length"); tap(pg, '.tip [data-a=buy]', 0, touch)
+        rec(f'{tag} buy basic gear at the Market', S(pg, "S.inv.length") == n0 + 1)
+        # ---------- hire with gold ----------
+        pg.evaluate("__G.S.gold+=5000"); place(pg, 'hall', touch)
+        c1 = S(pg, "hireCost()"); tap(pg, '[data-a=hire]', 0, touch); c2 = S(pg, "hireCost()")
+        rec(f'{tag} hire a second worker with gold; the third costs more', S(pg, "S.hired") == 2 and c2 > c1, (c1, c2))
         # ---------- codex ----------
-        tab(pg, 'codex', touch); pg.wait_for_timeout(300)
-        rec(f'{tag} bestiary lists met monsters with kill counts', pg.locator('.beast:not(.unk)').count() >= 3)
-        shot(pg, tag, '13-bestiary')
-        tap(pg, '[data-a=cview][data-v=mats]', 0, touch); rec(f'{tag} codex lists every material with sources', pg.locator('.card.mat').count() == 17)
-        tap(pg, '[data-a=cview][data-v=relics]', 0, touch); rec(f'{tag} relic codex lists 7 relics with odds', pg.locator('.card.relic').count() == 7)
+        nav(pg, 'codex', touch)
+        rec(f'{tag} bestiary shows kills and tiers per zone', pg.locator('.beast:not(.unseen)').count() >= 3)
+        shot(pg, tag, '12-bestiary')
+        tap(pg, '[data-a=cview][data-v=mats]', 0, touch)
+        rec(f'{tag} materials list says where each comes from', pg.locator('.skrow[data-a=matInfo]').count() >= 12)
+        tap(pg, '.skrow[data-a=matInfo]', 0, touch)
+        rec(f'{tag} where-to-get sheet opens', pg.locator('#modal h3', has_text='Where to get it').count() == 1)
+        close_modal(pg, touch)
         over = []
-        for t in ['party', 'village', 'map', 'codex']:
-            tab(pg, t, touch); pg.wait_for_timeout(200)
+        for t in ['town', 'map', 'camp', 'party', 'codex']:
+            nav(pg, t, touch)
             ov = pg.evaluate("document.documentElement.scrollWidth - window.innerWidth")
             if ov > 1: over.append((t, ov))
         rec(f'{tag} no horizontal overflow on any tab', not over, over)
-        # ---------- offline welcome back ----------
-        pg.evaluate("__G.S.auto=true;__G.S.wiped=false;__G.S.workers={masonry:true,mining:true};__debug.away(3600)")
-        lv0 = S(pg, "S.profs.masonry.lv"); w0 = S(pg, "S.stats.wins")
+        # ---------- boss ----------
+        pg.evaluate("__G.S.zones[0].wins=80;" + REFILL)
+        nav(pg, 'map', touch); tap(pg, '.zc [data-a=departBoss][data-z="0"]', 0, touch); pg.wait_for_timeout(2600)
+        rec(f'{tag} after 80 wins the boss can be challenged', S(pg, "!!(S.battle&&S.battle.boss)"), S(pg, "S.battle&&S.battle.enemies.map(e=>e.name)"))
+        if W < 1000: shot(pg, tag, '13-boss')
+        pg.evaluate("goHome('manual')")
+        # ---------- offline ----------
+        pg.evaluate("__G.S.workers={mining:1};" + REFILL + ";depart(0);__debug.away(3600)")
+        w0 = S(pg, "S.stats.wins"); x0 = S(pg, "S.profs.mining.xp+S.profs.mining.lv*1e6")
         pg.reload(wait_until='networkidle'); pg.wait_for_timeout(1200)
-        st = S(pg, "({lv:S.profs.masonry.lv,wins:S.stats.wins})")
-        rec(f'{tag} 1h offline: welcome-back summary; villagers + battles progressed', pg.locator('#modal h2', has_text='Welcome back').count() == 1 and st['lv'] > lv0 and st['wins'] > w0, st)
+        st = S(pg, "({w:S.stats.wins,x:S.profs.mining.xp+S.profs.mining.lv*1e6,loc:S.loc})")
+        rec(f'{tag} 1 h offline: welcome-back; fought until tired, workers kept working', pg.locator('#modal h2', has_text='Welcome back').count() == 1 and st['w'] > w0 and st['x'] > x0, st)
         shot(pg, tag, '14-welcome-back')
-        tap(pg, '#modal .mclose', 0, touch)
+        close_modal(pg, touch)
         # ---------- export / reset / import ----------
-        tap(pg, '[data-a=settings]', 0, touch); tap(pg, '[data-a=exportSave]', 0, touch)
-        code = pg.locator('#exp').input_value()
-        tap(pg, '#modal .mclose', 0, touch)
-        tap(pg, '[data-a=settings]', 0, touch); tap(pg, '[data-a=resetAsk]', 0, touch); tap(pg, '[data-a=resetDo]', 0, touch); pg.wait_for_timeout(400)
+        nav(pg, 'codex', touch); tap(pg, '[data-a=cview][data-v=settings]', 0, touch); tap(pg, '[data-a=exportSave]', 0, touch)
+        code = pg.locator('#exp').input_value(); close_modal(pg, touch)
+        tap(pg, '[data-a=resetAsk]', 0, touch); tap(pg, '[data-a=resetDo]', 0, touch); pg.wait_for_timeout(400)
         rec(f'{tag} hard reset returns to party creation', not S(pg, "S.started") and pg.locator('.create').count() == 1)
-        tap(pg, '[data-a=importOpen]', 0, touch); pg.locator('#imp').fill(code); tap(pg, '[data-a=importDo]', 0, touch); pg.wait_for_timeout(400)
-        rec(f'{tag} import restores the exported save', S(pg, "S.started && S.chars[0].name==='Noah' && S.chars[0].job==='knight'"))
-        # ---------- migration from an older save ----------
-        pg.evaluate("(()=>{save();__G.noSave=true;const s=JSON.parse(localStorage.getItem('lanternfall.save'));delete s.v;delete s.settings.autoRest;delete s.bestiary;delete s.banners;delete s.diamonds;s.buildings={smithy:2};s.inv.forEach(u=>delete u.r);localStorage.setItem('lanternfall.save',JSON.stringify(s));})()")
+        pg.evaluate(f"importSave({code!r})"); pg.evaluate("__debug.render()"); pg.wait_for_timeout(300)
+        rec(f'{tag} import restores the exported save', S(pg, "S.started && S.chars[0].name==='Noah' && S.chars[0].locks.knight==='0.2'"))
+        # ---------- v1 save -> new journey ----------
+        pg.evaluate("(()=>{__G.noSave=true;localStorage.setItem('lanternfall.save',JSON.stringify({v:2,started:true,chars:[{name:'Old'}]}))})()")
         pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
-        st = S(pg, "({v:S.v,ar:S.settings.autoRest,b:S.buildings,best:typeof S.bestiary,ban:S.banners,dia:S.diamonds,r:S.inv.every(u=>u.relic||u.r===0)})")
-        rec(f'{tag} save migration v0 -> v2 fills missing fields, gear gets rarity', st['v'] == 2 and st['ar'] is True and st['b'].get('guild') == 0 and st['b']['smithy'] == 2 and st['best'] == 'object' and st['ban']['forge'] == 1 and st['dia'] == 25 and st['r'], st)
+        st = S(pg, "({v:S.v,started:S.started,backup:!!localStorage.getItem('lanternfall.save.v2backup')})")
+        rec(f'{tag} old v1 save -> fresh start, backed up, one-time new-journey notice', st['v'] == 3 and not st['started'] and st['backup'] and pg.locator('#modal h2', has_text='new journey').count() == 1, st)
+        close_modal(pg, touch)
+        pg.evaluate(f"__G.noSave=false;importSave({code!r});__debug.render()"); pg.wait_for_timeout(300)
         # ---------- render guard ----------
-        pg.evaluate("__G.S.chars[0].race='nope'"); tab(pg, 'party', touch); pg.wait_for_timeout(1500)
-        rec(f'{tag} render guard: a broken page shows an error box, game keeps running', pg.locator('.err').count() >= 1)
-        pg.evaluate("__G.S.chars[0].race='human'"); pg.wait_for_timeout(1500)
-        errs[:] = [e for e in errs if not (e.startswith(tag + ' console') and ('party' in e or 'battle' in e or 'mini' in e or 'tick' in e or 'top' in e))]
+        pg.evaluate("__G.S.chars[0].race='nope'"); nav(pg, 'party', touch); pg.wait_for_timeout(1300)
+        rec(f'{tag} render guard: a broken page shows an error box, game keeps running', pg.locator('.err').count() >= 1 and pg.locator('#nav .nb').count() == 5)
+        pg.evaluate("__G.S.chars[0].race='human'"); pg.wait_for_timeout(1300)
+        errs[:] = [e for e in errs if not (e.startswith(tag + ' console') and any(k in e for k in ('party', 'battle', 'nav', 'tick', 'top', 'town', 'camp', 'map')))]
         ctx.close()
     b.close()
 print('console/page errors:', errs or 'none'); print('bad responses:', bad or 'none')
