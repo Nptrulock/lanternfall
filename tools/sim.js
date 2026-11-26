@@ -18,7 +18,7 @@ let bossFails={};
 function manage(inSession){
   const S=G.S;
   // workers
-  const order=['mining','foraging','smithing','foraging','cooking','scholarship','mining','foraging'];
+  const order=['mining','foraging','masonry','smithing','foraging','cooking','scholarship','banking','mining','foraging'];
   if(S.buildings.tavern<1) order.splice(order.indexOf('cooking'),1);
   if(S.buildings.library<1) order.splice(order.indexOf('scholarship'),1);
   if(S.gold>=(F.hireCost()||1e9)*1.2 && S.hired<6) F.hire();

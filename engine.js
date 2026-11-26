@@ -2,7 +2,7 @@
 /* Lanternfall v2 — engine (no DOM). Exposes G. */
 const G = {S:null, ev:[], quiet:false, toast:null, now:()=>Date.now(), cv:1};
 const SAVE_KEY = 'lanternfall.save';
-const SAVE_V = 3;
+const SAVE_V = 4;
 const rnd = (a,b)=>a+Math.random()*(b-a), ri=(a,b)=>Math.floor(rnd(a,b+1)), pick=a=>a[Math.floor(Math.random()*a.length)], chance=p=>Math.random()<p;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const fmtTime=s=>{s=Math.max(0,Math.floor(s));const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${x}s`:`${x}s`};
@@ -19,24 +19,41 @@ const MAX_LV = 60;
 /* ---------------- state ---------------- */
 function newChar(name, race){
   return {name, race, lv:1, xp:0, hp:1, mp:0, stam:D.STAM.base, endLv:1, endXp:0, act:'rest',
-    equip:{weapon:null,armor:null,acc:null,relic:null}, ap:{}, learned:{}, job:null, sub:null, jobs:{}, locks:{}, mentors:{}, tactic:'auto', wins:0};
+    equip:{weapon:null,armor:null,acc:null,relic:null}, ap:{}, learned:{}, job:null, sub:null, jobs:{}, locks:{}, mentors:{}, tactic:'auto', wins:0,
+    skillOff:{}, drill:{xp:0,gold:0,n:0,last:0}};
 }
 function newState(){
   const b={}; for(const k of D.BUILD_ORDER) b[k]=D.BUILD[k].start;
   return {v:SAVE_V, created:Date.now(), last:Date.now(), started:false,
-    chars:[], gold:20, diamonds:D.START_DIAMONDS, inv:[], nextUid:1, mats:{}, meals:{}, food:null,
-    loc:'town', exp:null, zone:0, zones:D.ZONES.map(()=>({wins:0, boss:false, bossKills:0, sinceBoss:0})), battle:null, pendingBoss:false, pause:0,
-    profs:Object.fromEntries(D.PROF_ORDER.map(p=>[p,{lv:1,xp:0,acc:{}}])), workers:{}, hired:1, buildings:b, pity:{},
+    chars:[], gold:20, diamonds:D.START_DIAMONDS, inv:[], nextUid:1, mats:{}, meals:{}, food:null, foods:[],
+    loc:'town', exp:null, zone:0, zones:D.ZONES.map(()=>({wins:0, boss:false, bossKills:0, sinceBoss:0, stages:0})), battle:null, pendingBoss:false, pause:0,
+    profs:Object.fromEntries(D.PROF_ORDER.map(p=>[p,{lv:1,xp:0,acc:{}}])), workers:{}, hired:1, buildings:b, pity:{}, pityM:{},
     bestiary:{}, variants:{}, beastRewards:{}, relicsFound:{}, flags:{}, tut:0,
-    stats:{wins:0, losses:0, kills:0, bosses:0, bought:0, learned:0, goldEarned:0, battles:0, relics:0, play:0, pulls:0, diamondsEarned:0, departs:0, returns:0, rounds:0, battleMs:0},
+    bank:{gold:0, earned:0, convertAcc:0}, market:{at:0, list:[]}, feature:{day:'', id:null, r:0, taken:0}, research:{},
+    beastXp:{}, beastGold:{}, bagSort:'rarity',
+    stats:{wins:0, losses:0, kills:0, bosses:0, bought:0, learned:0, goldEarned:0, battles:0, relics:0, play:0, pulls:0, diamondsEarned:0, departs:0, returns:0, rounds:0, battleMs:0, stages:0, drills:0, interest:0},
     settings:{autoBoss:false},
     log:[]};
 }
-/* Save versions: v1/v2 were the first release. v3 (this redesign) is a fresh start: older saves are backed up, not converted. */
+/* Save versions: v1/v2 were the first release. v3 is the town-first redesign (fresh start). v4 is the playtest pass; v3 saves migrate safely. */
+function migrateV3to4(s){
+  try{
+    if(s.zones && s.bestiary && D && D.ZONES){
+      D.ZONES.forEach((Z,i)=>{ const z=s.zones[i]; if(!z||!Z||!Z.boss) return; const id=Z.boss.id; const real=z.bossKills||0; if((s.bestiary[id]||0)>real) s.bestiary[id]=real; });
+    }
+    if(Array.isArray(s.chars)) for(const c of s.chars){
+      if(!c||!c.mentors) continue;
+      for(const mid in c.mentors){ if((c.mentors[mid].rank||0)>=1) c.mentors[mid].legacySub=1; }
+    }
+    if(typeof s.food==='string' && s.food) s.foods=[s.food];
+    s.v=4;
+  }catch(e){ s.v=4; }
+}
 function migrate(s){
   if(!s || typeof s!=='object') throw new Error('The save is not readable data.');
   if(typeof s.v!=='number') s.v=0;
   if(s.v<3) throw Object.assign(new Error('old'), {oldSave:true});
+  if(s.v===3) migrateV3to4(s);
   if(s.v>SAVE_V) throw new Error('This save is from a newer version of Lanternfall.');
   if(!Array.isArray(s.chars)) throw new Error('The save has no party.');
   if(s.started && s.chars.length!==3) throw new Error('The party in the save is damaged.');
@@ -48,10 +65,19 @@ function migrate(s){
   for(const p of D.PROF_ORDER) if(!s.profs[p]) s.profs[p]={lv:1,xp:0,acc:{}};
   for(const b of D.BUILD_ORDER) if(s.buildings[b]===undefined) s.buildings[b]=D.BUILD[b].start;
   if(!Array.isArray(s.zones)) throw new Error('The zone list in the save is damaged.');
-  while(s.zones.length<D.ZONES.length) s.zones.push({wins:0,boss:false,bossKills:0,sinceBoss:0});
+  while(s.zones.length<D.ZONES.length) s.zones.push({wins:0,boss:false,bossKills:0,sinceBoss:0,stages:0});
+  s.zones.forEach(z=>{ if(z.stages==null) z.stages=Math.min(D.STAGES||10, Math.floor((z.wins||0)*(D.STAGES||10)/(80))); });
   if(!Array.isArray(s.inv)) throw new Error('The inventory in the save is damaged.');
   const nc=newChar('x','human');
-  s.chars.forEach(c=>{ for(const k in nc) if(c[k]===undefined) c[k]=JSON.parse(JSON.stringify(nc[k])); c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); });
+  s.chars.forEach(c=>{ for(const k in nc) if(c[k]===undefined) c[k]=JSON.parse(JSON.stringify(nc[k])); c.equip=Object.assign({weapon:null,armor:null,acc:null,relic:null}, c.equip||{}); c.skillOff=c.skillOff||{}; c.drill=Object.assign({xp:0,gold:0,n:0,last:0}, c.drill||{}); });
+  if(!s.bank) s.bank={gold:0,earned:0,convertAcc:0};
+  if(!s.market) s.market={at:0,list:[]};
+  if(!s.feature) s.feature={day:'',id:null,r:0,taken:0};
+  if(!s.research) s.research={};
+  if(!s.beastXp) s.beastXp={};
+  if(!s.beastGold) s.beastGold={};
+  if(!s.pityM) s.pityM={};
+  if(!Array.isArray(s.foods)) s.foods=s.food? [s.food]:[];
   return s;
 }
 /* ---------------- saving, backups & recovery ----------------
@@ -133,7 +159,7 @@ function equippedBy(uid){ return G.S.chars.findIndex(c=>Object.values(c.equip).i
 function charGear(c){ return D.SLOTS.map(s=>c.equip[s]!=null?invItem(c.equip[s]):null).filter(Boolean); }
 
 /* ---------------- derived stats ---------------- */
-const SUM_KEYS = ['hit','crit','dodge','counter','double','regen','postHeal','gold','dr','physFlat','physPct','spellPct','healPct','holyPct','wildPct','shadowPct','weakPct','spellFlat','echo','haste','taunt','first','rage','cleaveChance','pack','critDmg','mpCut','killMp','poisonPlus','thorns','dmgPct','endure','gearPlus','stam'];
+const SUM_KEYS = ['hit','crit','dodge','counter','double','regen','postHeal','gold','xp','dr','physFlat','physPct','spellPct','healPct','holyPct','wildPct','shadowPct','weakPct','spellFlat','echo','haste','taunt','first','rage','cleaveChance','pack','critDmg','mpCut','killMp','poisonPlus','thorns','dmgPct','endure','gearPlus','stam'];
 function addEff(d, eff){
   if(!eff) return;
   if(eff.stat) for(const k in eff.stat) d[k]+=eff.stat[k];
@@ -157,12 +183,19 @@ function skillSet(c){
   if(c.job){ out[D.JOBS[c.job].cmd]='job'; for(const n of jobNodes(c,c.job)) if(n.eff.grant) out[n.eff.grant]='job'; }
   if(c.sub && subjobOk(c, c.sub)){ out[D.JOBS[c.sub].cmd] = out[D.JOBS[c.sub].cmd]||'sub'; for(const n of jobNodes(c,c.sub)) if(n.eff.grant && !out[n.eff.grant]) out[n.eff.grant]='sub'; }
   for(const {n} of lockedNodes(c)) if(n.eff.grant && !out[n.eff.grant]) out[n.eff.grant]='lock';
+  for(const mid in (c.mentors||{})){ const r=mentorRank(c,mid); const g=D.MENTOR[mid]&&D.MENTOR[mid].gifts; if(!g) continue;
+    for(const rk of (D.MENTOR_GIFT_RANKS||[5,7,10])) if(r>=rk && g[rk] && g[rk].grant && !out[g[rk].grant]) out[g[rk].grant]='mentor'; }
   return out;
 }
+function isAbilityNode(n){ if(!n||!n.eff) return false; if(n.eff.grant) return true; const ks=Object.keys(n.eff); if(!ks.length) return false; if(ks.length===1 && ks[0]==='stat') return false; return true; }
+
 function mentorRank(c, mid){ return (c.mentors[mid]&&c.mentors[mid].rank)||0; }
 function mentorEff(c){ const o={}; for(const mid in c.mentors){ const r=mentorRank(c,mid); if(!r) continue; const m=D.MENTOR[mid];
     const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v; o[m.plus]=(o[m.plus]||0)+k(D.MENTOR_PLUS(r));
     const mn=D.MENTOR_MINUS(r); if(mn) o[m.minus]=(o[m.minus]||0)-(m.minus==='hp'?mn*2:mn); } return o; }
+function mentorGifts(c){ const out=[]; for(const mid in (c.mentors||{})){ const r=mentorRank(c,mid); const g=D.MENTOR[mid]&&D.MENTOR[mid].gifts; if(!g) continue;
+    for(const rk of (D.MENTOR_GIFT_RANKS||[5,7,10])) if(r>=rk && g[rk] && g[rk].eff) out.push(g[rk].eff); } return out; }
+
 const _calc = new WeakMap();
 function calcBase(c){
   const hit=_calc.get(c); if(hit && hit.v===G.cv) return hit.d;
@@ -172,14 +205,21 @@ function calcBase(c){
   for(const t of raceTraits(c)) addEff(d, t.eff);
   const gp = raceTraits(c).some(t=>t.eff.gearPlus) ? 1 : 0;
   for(const u of charGear(c)){ const it=defOf(u); for(const k in it.stats) d[k]+=it.stats[k];
-    if(gp && it.slot==='weapon') d[it.stats.mag>it.stats.str?'mag':'str']+=1; if(gp && it.slot==='armor') d.def+=1; }
+    if(gp && it.slot==='weapon') d[it.stats.mag>it.stats.str?'mag':'str']+=1; if(gp && it.slot==='armor') d.def+=1;
+    if(it.bonus) addEff(d, it.bonus); }
   const ss = skillSet(c);
-  for(const id in ss){ const s=D.SKILLS[id]; if(s.kind==='passive') addEff(d, s.eff); }
+  for(const id in ss){ const s=D.SKILLS[id]; if(s && s.kind==='passive') addEff(d, s.eff); }
   if(c.job){ const j=D.JOBS[c.job]; for(const k in j.stats) d[k]+=j.stats[k]; for(const n of jobNodes(c,c.job)) if(!n.eff.grant) addEff(d, n.eff); }
-  if(c.sub && subjobOk(c,c.sub)){ const j=D.JOBS[c.sub]; for(const k in j.stats) d[k]+=Math.max(1,Math.floor(j.stats[k]/2)); }
+  if(c.sub && subjobOk(c,c.sub)){ const j=D.JOBS[c.sub]; for(const k in j.stats) d[k]+=Math.max(1,Math.floor(j.stats[k]/2));
+    for(const n of jobNodes(c,c.sub)) if(isAbilityNode(n) && !n.eff.grant) addEff(d, n.eff); }
   for(const {n} of lockedNodes(c)) if(!n.eff.grant) addEff(d, n.eff);
   const me=mentorEff(c); for(const k in me) d[k]+=me[k];
-  const S=G.S; if(S.food && S.loc==='exp') for(const k in D.FOOD[S.food].buff) d[k]+=D.FOOD[S.food].buff[k];
+  for(const eff of mentorGifts(c)) addEff(d, eff);
+  if(c.drill){ const u=(D.DRILL&&D.DRILL.unit)||0.001; d.f.xp=(d.f.xp||0)+(c.drill.xp||0)*u; d.f.gold=(d.f.gold||0)+(c.drill.gold||0)*u; }
+  const S=G.S;
+  if(S && D.BUILD_AURA){ for(const b in D.BUILD_AURA){ const L=S.buildings[b]||0; if(!L) continue; const a=D.BUILD_AURA[b]; const sc={}; for(const k in a){ if(k==='stat') continue; sc[k]=(a[k]||0)*L; } addEff(d, sc); } }
+  const meals=(S && S.loc==='exp') ? (Array.isArray(S.foods)&&S.foods.length? S.foods : (S.food?[S.food]:[])) : [];
+  for(const fid of meals){ const f=D.FOOD[fid]; if(f&&f.buff) for(const k in f.buff) d[k]+=f.buff[k]; }
   for(const k of ['str','def','mag','agi']) d[k]=Math.max(k==='def'?0:1, d[k]);
   d.maxHp = Math.max(4, d.hp); d.maxMp = Math.max(0, d.mp);
   d.maxStam = D.STAM.base + D.STAM.perLv*(c.endLv-1) + (d.f.stam||0);
@@ -188,15 +228,25 @@ function calcBase(c){
 function calc(c, buffs){ const b=calcBase(c); if(!buffs) return b; let any=false; for(const k in buffs) if(buffs[k]){ any=true; break; } if(!any) return b;
   const d=Object.assign({}, b); for(const k in buffs) d[k]+=buffs[k]; d.maxHp=Math.max(4,d.hp); d.maxMp=Math.max(0,d.mp); return d; }
 function maxStam(c){ return calcBase(c).maxStam; }
-function typeCounts(c){ const n={}; for(const id in c.learned){ const t=D.SKILLS[id].type; n[t]=(n[t]||0)+1; } return n; }
+function typeCounts(c){ const n={}; for(const id in c.learned){ const t=D.SKILLS[id]&&D.SKILLS[id].type; if(t) n[t]=(n[t]||0)+1; } return n; }
 function bestMentorRank(c, jid){ let r=0; for(const m of D.MENTORS) if(m.job===jid) r=Math.max(r, mentorRank(c,m.id)); return r; }
 function jobReqMet(c, jid){ const j=D.JOBS[jid], n=typeCounts(c); for(const t in j.req) if((n[t]||0)<j.req[t]) return false; return true; }
-function jobUnlocked(c, jid){ const j=D.JOBS[jid]; if(!jobReqMet(c,jid)) return false; if(j.adv && bestMentorRank(c,jid)<3) return false; return true; }
+function jobMentorNeed(j){ if(!j) return 0; if(j.needRank!=null) return j.needRank; if(j.adv===2) return 5; if(j.adv) return 1; return 0; }
+function bestJobMentorRank(c, jid){ let r=bestMentorRank(c,jid); const j=D.JOBS[jid]; if(j&&j.from) for(const fid of j.from) r=Math.max(r, bestMentorRank(c,fid)); return r; }
+function jobFromOk(c, jid){ const j=D.JOBS[jid]; if(!j||!j.from) return true; return j.from.some(fid=>c.job===fid || c.sub===fid || !!c.jobs[fid]); }
+function jobUnlocked(c, jid){ const j=D.JOBS[jid]; const need=jobMentorNeed(j); const mr=bestJobMentorRank(c,jid);
+  if(j.adv){ if(!jobReqMet(c,jid)) return false; if(mr<need) return false; if(!jobFromOk(c,jid)) return false; return true; }
+  return jobReqMet(c,jid) || mr>=1; }
 function jobWhy(c, jid){ const j=D.JOBS[jid], n=typeCounts(c), miss=[];
   for(const t in j.req) if((n[t]||0)<j.req[t]) miss.push(`${j.req[t]} learned ${D.TYPES[t].name} skill${j.req[t]>1?'s':''} (have ${n[t]||0})`);
-  if(j.adv && bestMentorRank(c,jid)<3){ const ms=D.MENTORS.filter(m=>m.job===jid).map(m=>m.name).join(' or '); miss.push(`rank 3 with ${ms}`); }
+  const need=jobMentorNeed(j), mr=bestJobMentorRank(c,jid);
+  if(need && mr<need){ const ids=j.from? j.from.concat(jid):[jid]; const ms=D.MENTORS.filter(m=>ids.includes(m.job)).map(m=>m.name).join(' or ')||'a mentor of this craft'; miss.push(`rank ${need} with ${ms}`); }
+  if(!jobFromOk(c,jid)) miss.push('first walk the path of '+(j.from||[]).map(id=>D.JOBS[id].name).join(' or '));
   return miss.join(' · '); }
-function subjobOk(c, jid){ return jid && jid!==c.job && bestMentorRank(c,jid)>=1; }
+function subjobOk(c, jid){ if(!jid || jid===c.job || !D.JOBS[jid]) return false;
+  if(bestJobMentorRank(c,jid)>=3) return true;
+  for(const mid in (c.mentors||{})){ if(c.mentors[mid]&&c.mentors[mid].legacySub && D.MENTOR[mid] && (D.MENTOR[mid].job===jid || (D.JOBS[jid].from||[]).includes(D.MENTOR[mid].job))) return true; }
+  return false; }
 function setJob(ci, jid){ const c=G.S.chars[ci]; if(jid && !jobUnlocked(c,jid)) return false; c.job=jid||null; if(jid && !c.jobs[jid]) c.jobs[jid]={jp:0, nodes:{core:1}}; if(c.sub===jid) c.sub=null; dirty(); fixHpMp(c); return true; }
 function setSub(ci, jid){ const c=G.S.chars[ci]; if(jid && !subjobOk(c,jid)) return false; c.sub=jid||null; if(jid && !c.jobs[jid]) c.jobs[jid]={jp:0, nodes:{core:1}}; dirty(); fixHpMp(c); return true; }
 function nodeAvailable(c, jid, n){
@@ -241,7 +291,7 @@ function tickProfs(dt){
       continue; }
     for(const o of profOutputs(p)){ if(!o.ok) continue; pr.acc[o.key]=(pr.acc[o.key]||0)+dt*(o.key==='diamond'?1:w); const n=Math.floor(pr.acc[o.key]/o.every); if(n<=0) continue; pr.acc[o.key]-=n*o.every;
       if(o.key==='gear'){ for(let i=0;i<n;i++) smithForge(); }
-      else if(o.key==='study'){ const seen=Object.keys(S.bestiary); for(let i=0;i<n && seen.length;i++){ addKill(pick(seen), 1, true); } }
+      else if(o.key==='study'){ const seen=Object.keys(S.bestiary).filter(id=>!isBossId(id)); for(let i=0;i<n && seen.length;i++){ addResearch(pick(seen), 1); } }
       else gain(o.key, n); }
   }
 }
@@ -251,14 +301,20 @@ function smithForge(){ const S=G.S; const types=D.BANNER_ORDER.filter(b=>S.build
   const it=pick(pool); addItem(it.id, 0); log(`⚒️ The smithy forged a ${it.icon} ${it.name}.`,'loot'); toast(`⚒️ Smithy forged ${it.icon} ${it.name}`,'good'); if(G.sum) G.sum.items.push(it.name); }
 function profPerkText(p){ const L=G.S.profs[p].lv;
   if(p==='cooking') return `Cooks a meal every ${fmtTime(cookEvery())} (needs ingredients and a Tavern recipe)`;
-  return profOutputs(p).map(o=>{ const nm=o.key==='diamond'?'💎 Diamond':o.key==='gear'?'🗡️ Common gear':o.key==='study'?'📜 bestiary study':D.MATS[o.key].icon+' '+D.MATS[o.key].name;
+  if(p==='banking') return `Town Bank earns ${(bankRate()*100).toFixed(2)}% interest per day`+(G.S.workers.banking?` (${G.S.workers.banking} banker${G.S.workers.banking>1?'s':''} tending the books)`:' — assign a banker to raise the rate');
+  if(p==='scholarship') return (profOutputs(p).map(o=>{ const nm=o.key==='study'?'📜 research (lowers kills needed, never adds kills)':o.key==='ecto'?(D.MATS.ecto?D.MATS.ecto.icon+' '+D.MATS.ecto.name:'ecto'):o.key;
+    if(o.ok) return `${nm} every ${fmtTime(o.every)}`; const why=L<o.minLv?`Lv ${o.minLv}`:`reach ${D.ZONES[o.zone].name}`; return `${nm} — ${why}`; }).join(' · ')||'Researches seen foes');
+  const outs=profOutputs(p); if(!outs.length) return D.PROFS[p].desc;
+  return outs.map(o=>{ const nm=o.key==='diamond'?'💎 Diamond':o.key==='gear'?'🗡️ Common gear':o.key==='study'?'📜 research':(D.MATS[o.key]?D.MATS[o.key].icon+' '+D.MATS[o.key].name:o.key);
     if(o.ok) return `${nm} every ${fmtTime(o.every)}`; const why=L<o.minLv?`Lv ${o.minLv}`:`reach ${D.ZONES[o.zone].name}`; return `${nm} — ${why}`; }).join(' · '); }
 
 /* ---------------- buildings ---------------- */
 function buildCost(b){ const L=G.S.buildings[b]+1; if(L>D.BMAX) return null; const c=D.BUILD_COST[L]; const mats={stone:c.stone, timber:c.timber};
-  if(L>=2){ const x=D.BUILD_MATS[b][L-2]; mats[x]=(mats[x]||0)+3*L; } const prof=D.BUILD[b].prof; return {lv:L, prof, profLv:prof?c.prof:0, gold:c.gold, mats}; }
+  if(L>=2){ const x=D.BUILD_MATS[b][L-2]; mats[x]=(mats[x]||0)+3*L; } const prof=D.BUILD[b].prof; return {lv:L, prof, profLv:prof?c.prof:0, masonry:c.masonry||0, gold:c.gold, mats}; }
 function canBuild(b){ const c=buildCost(b); if(!c) return {ok:false, why:'Max level'}; const S=G.S;
-  const miss=[]; if(c.prof && S.profs[c.prof].lv<c.profLv) miss.push(`${D.PROFS[c.prof].name} Lv ${c.profLv}`); if(S.gold<c.gold) miss.push(`${c.gold} gold`);
+  const miss=[]; if(c.prof && S.profs[c.prof].lv<c.profLv) miss.push(`${D.PROFS[c.prof].name} Lv ${c.profLv}`);
+  if(c.masonry && ((S.profs.masonry&&S.profs.masonry.lv)||0)<c.masonry) miss.push(`Masonry Lv ${c.masonry}`);
+  if(S.gold<c.gold) miss.push(`${c.gold} gold`);
   for(const m in c.mats) if((S.mats[m]||0)<c.mats[m]) miss.push(`${c.mats[m]} ${D.MATS[m].name}`);
   return {ok:!miss.length, why:miss.join(', ')}; }
 function build(b){ const a=canBuild(b); if(!a.ok) return false; const c=buildCost(b), S=G.S; S.gold-=c.gold; for(const m in c.mats) S.mats[m]-=c.mats[m]; S.buildings[b]=c.lv;
@@ -269,9 +325,21 @@ function pay(gold, mats){ const S=G.S; S.gold-=gold; for(const m in mats) S.mats
 /* ---------------- market ---------------- */
 function sellBonus(){ return 1+Math.min(40,G.S.profs.smithing.lv)/100 + 0.05*G.S.buildings.market; }
 function sellPrice(u){ const it=defOf(u); if(u.relic) return 0; return Math.max(1, Math.floor((it.price||Math.round(20*Math.pow(2.1,it.tier)))*0.4*D.RARITY[u.r||0].sell*sellBonus())); }
-function shopItems(){ return D.ITEMS.filter(it=>it.shop && it.shop<=G.S.buildings.market); }
+function marketSlots(){ const L=G.S.buildings.market||1; return 2+Math.floor((L-1)/2); }
+function refreshMarket(force){
+  const S=G.S; S.market=S.market||{at:0,list:[]}; const now=G.now(); const every=D.MARKET_EVERY||8*3600;
+  if(!force && Array.isArray(S.market.list) && S.market.list.length && now-S.market.at<every) return S.market;
+  const pool=D.ITEMS.filter(it=>it.shop && it.shop<=S.buildings.market);
+  const n=Math.min(marketSlots(), pool.length); const bag=pool.slice();
+  for(let i=bag.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=bag[i]; bag[i]=bag[j]; bag[j]=t; }
+  S.market={at:now, list:bag.slice(0,n).map(it=>it.id)}; return S.market;
+}
+function marketLeft(){ const at=(G.S.market&&G.S.market.at)||0; return Math.max(0, (D.MARKET_EVERY||8*3600) - (G.now()-at)/1000); }
+function shopItems(){ refreshMarket(false); const ids=(G.S.market&&G.S.market.list)||[]; return ids.map(id=>D.ITEM[id]).filter(Boolean); }
 function buyPrice(it){ return Math.ceil(it.price*3); }
-function buyItem(id){ const it=D.ITEM[id], p=buyPrice(it), S=G.S; if(!it.shop||it.shop>S.buildings.market||S.gold<p) return false; S.gold-=p; addItem(id); S.stats.bought++; return true; }
+function buyItem(id){ const it=D.ITEM[id], p=buyPrice(it), S=G.S; if(!it||S.gold<p) return false;
+  refreshMarket(false); const inStock=((S.market&&S.market.list)||[]).includes(id); if(!inStock) return false;
+  S.gold-=p; addItem(id); S.stats.bought++; return true; }
 function sellItem(uid){ const S=G.S; const i=S.inv.findIndex(x=>x.uid===uid); if(i<0||S.inv[i].relic||equippedBy(uid)>=0) return 0; const g=sellPrice(S.inv[i]); S.inv.splice(i,1); S.gold+=g; return g; }
 function isMastered(u){ const it=defOf(u); return !u.relic && it.skills.every(s=>G.S.chars.every(c=>c.learned[s])); }
 function bulkSellMastered(){ let g=0,n=0; for(const u of [...G.S.inv]) if(equippedBy(u.uid)<0 && isMastered(u)){ g+=sellItem(u.uid); n++; } return {g,n}; }
@@ -295,7 +363,11 @@ function tickTown(dt){
     else if(c.act.startsWith('m:')){ const mid=c.act.slice(2), m=D.MENTOR[mid]; if(!mentorAvailable(mid)){ c.act='rest'; continue; }
       const st=c.mentors[mid]=c.mentors[mid]||{rank:0, xp:0}; if(st.rank>=D.MENTOR_MAX){ c.act='rest'; continue; }
       st.xp+=dt; while(st.xp>=mentorNeed(st.rank) && st.rank<D.MENTOR_MAX){ st.xp-=mentorNeed(st.rank); st.rank++; dirty(); fixHpMp(c);
-        const j=D.JOBS[m.job]; const msg = st.rank===1 ? `${c.name} can now take ${j.icon} ${j.name} as a subjob.` : (st.rank===3 && j.adv) ? `${c.name} can now become a ${j.icon} ${j.name}!` : `${c.name} reached rank ${st.rank} with ${m.name}.`;
+        const j=D.JOBS[m.job]; const gift=m.gifts&&m.gifts[st.rank];
+        let msg=`${c.name} reached rank ${st.rank} with ${m.name} (+${D.MENTOR_PLUS(st.rank)} ${m.plus.toUpperCase()}).`;
+        if(st.rank===1) msg=`${c.name} can now take ${j.icon} ${j.name} as a main job.`;
+        if(st.rank===3) msg=`${c.name} can now take ${j.icon} ${j.name} as a sub job.`;
+        if(gift) msg=`${c.name} learned ${gift.name} from ${m.name}: ${gift.desc}`;
         log(`🎓 ${msg}`,'learn'); toast(`🎓 ${msg}`,'learn'); if(G.sum) G.sum.notes.push(msg); } }
   }
 }
@@ -316,9 +388,13 @@ function itemSources(id){
 function skillSources(sid){ const out=[]; D.ITEMS.forEach(it=>{ if(it.skills.includes(sid)) out.push(it); }); D.RELICS.forEach(r=>{ if(r.skill===sid) out.push(Object.assign({relicDef:1}, r)); }); return out; }
 
 /* ---------------- bestiary & collection ---------------- */
-function beastTier(eid){ const k=G.S.bestiary[eid]||0, lib=G.S.buildings.library; let t=0; D.BEAST_TIERS.forEach((x,i)=>{ if(i>0 && k>=x.kills && lib>=x.lib) t=i; }); return t; }
+function isBossId(eid){ return D.ZONES.some(Z=>Z.boss && Z.boss.id===eid); }
+function killsNeeded(tier){ const base=D.BEAST_TIERS[tier].kills; const lib=(G.S.buildings&&G.S.buildings.library)||0; const red=Math.min(0.5, (D.LIB_KILL_REDUCE||0.07)*lib); return Math.max(Math.ceil(base*0.5), Math.round(base*(1-red))); }
+function beastNeed(eid, tier){ const need=killsNeeded(tier); const res=isBossId(eid)?0:((G.S.research&&G.S.research[eid])||0); return Math.max(Math.ceil(D.BEAST_TIERS[tier].kills*0.4), need-res); }
+function beastTier(eid){ const k=G.S.bestiary[eid]||0; let t=0; D.BEAST_TIERS.forEach((x,i)=>{ if(i>0 && k>=beastNeed(eid,i)) t=i; }); return t; }
 function beastTierByKills(eid){ const k=G.S.bestiary[eid]||0; let t=0; D.BEAST_TIERS.forEach((x,i)=>{ if(i>0 && k>=x.kills) t=i; }); return t; }
-function addKill(eid, n, study){ const S=G.S; const before=beastTier(eid); S.bestiary[eid]=(S.bestiary[eid]||0)+n; checkBeast(eid, before); }
+function addKill(eid, n, study){ if(study) return addResearch(eid, n); const S=G.S; const before=beastTier(eid); S.bestiary[eid]=(S.bestiary[eid]||0)+n; checkBeast(eid, before); }
+function addResearch(eid, n){ const S=G.S; if(!eid||isBossId(eid)) return; S.research=S.research||{}; const before=beastTier(eid); S.research[eid]=(S.research[eid]||0)+(n||1); checkBeast(eid, before); }
 function checkBeast(eid, before){ const S=G.S; const t=beastTier(eid); if(t<=before) return; const def=findEnemyDef(eid);
   for(let k=before+1;k<=t;k++){ const T=D.BEAST_TIERS[k]; const key=eid+':'+k; if(S.beastRewards[key]) continue; S.beastRewards[key]=1;
     let msg=`📚 Bestiary: ${def.name} is now ${T.label.split(' —')[0]}.`; if(T.dia){ gain('diamond', T.dia); msg+=` +${T.dia} 💎`; }
@@ -334,8 +410,9 @@ function checkCollections(){ const S=G.S; D.ZONES.forEach((z,zi)=>{ const c=zone
   log(`💠 Collection complete: ${z.name}! The Library awards ${c.relic.icon} ${c.relic.name}.`,'relic'); toast(`💠 RELIC: ${c.relic.icon} ${c.relic.name} — ${z.name} collection complete!`,'relic'); emit({t:'relic', id:c.relic.id}); if(G.sum) G.sum.items.push('💠 '+c.relic.name); } }); }
 function enemyStats(e, zi){
   const r=D.ROLES[e.role], P=D.ZP; const b=e.boss?{hp:4.5,atk:1.25,def:1.2,agi:1.1,xp:8,gold:10}:{hp:1,atk:1,def:1,agi:1,xp:1,gold:1};
-  return {hp:Math.max(3,Math.round(P.hp[zi]*r.hp*b.hp)), atk:Math.max(2,Math.round(P.atk[zi]*r.atk*b.atk)), def:Math.round(P.def[zi]*r.def*b.def), agi:Math.max(1,Math.round(P.agi[zi]*r.agi*b.agi)),
-    mag:r.mag?Math.round(P.atk[zi]*r.mag*b.atk):0, xp:Math.round(P.xp[zi]*(r.hp+r.atk)/2*b.xp), gold:Math.max(1,Math.round(P.gold[zi]*b.gold))};
+  const late=zi<2?1:zi===2?1.14:1+0.22*(zi-2); // zone 3+ a little sturdier so later power spikes do not shrink the calendar
+  return {hp:Math.max(3,Math.round(P.hp[zi]*r.hp*b.hp*late)), atk:Math.max(2,Math.round(P.atk[zi]*r.atk*b.atk*late)), def:Math.round(P.def[zi]*r.def*b.def*late), agi:Math.max(1,Math.round(P.agi[zi]*r.agi*b.agi)),
+    mag:r.mag?Math.round(P.atk[zi]*r.mag*b.atk*late):0, xp:Math.round(P.xp[zi]*(r.hp+r.atk)/2*b.xp), gold:Math.max(1,Math.round(P.gold[zi]*b.gold))};
 }
 
 /* ---------------- battle ---------------- */
@@ -384,9 +461,11 @@ function spellOn(ci, d, e, power, el, scale){
 function healChar(ci, amt, d){ const c=G.S.chars[ci], md=calc(c,G.S.battle&&G.S.battle.buffs); const before=c.hp; c.hp=Math.min(md.maxHp, c.hp+Math.round(amt)); const h=c.hp-before; emit({t:'healP', i:ci, amt:h}); return h; }
 function usableSkills(c, d){
   const ss=skillSet(c), out=[];
-  for(const id in ss){ const s=D.SKILLS[id]; if(s.kind!=='active') continue; const cost=Math.max(s.mp?1:0,(s.mp||0)-(s.eff.spell||s.eff.heal?(d.f.mpCut||0):0)); out.push({id, s, cost}); }
+  for(const id in ss){ const s=D.SKILLS[id]; if(!s||s.kind!=='active') continue; if(c.skillOff&&c.skillOff[id]) continue; const cost=Math.max(s.mp?1:0,(s.mp||0)-(s.eff.spell||s.eff.heal?(d.f.mpCut||0):0)); out.push({id, s, cost}); }
   return out;
 }
+function toggleSkill(ci, sid){ const c=G.S.chars[ci]; if(!c||!D.SKILLS[sid]) return false; c.skillOff=c.skillOff||{}; if(c.skillOff[sid]) delete c.skillOff[sid]; else c.skillOff[sid]=1; dirty(); return true; }
+
 function playerTurn(ci, extra){
   const S=G.S, B=S.battle, c=S.chars[ci]; const d=calc(c,B.buffs); const cs=B.cs[ci];
   if(d.f.regen && c.hp>0 && c.hp<d.maxHp){ const h=healChar(ci, d.f.regen); }
@@ -521,7 +600,15 @@ function hurtChar(ci, d, dmg, e){
 /* ---------------- expeditions ----------------
    The game opens in town. The player picks a zone and sets out; battles only happen on an expedition.
    Each battle costs stamina. When anyone is out of stamina (or the party falls) everyone walks home to rest. */
-function bossReady(zi){ const z=G.S.zones[zi]; return (!z.boss && z.wins>=D.ZONES[zi].wins) || (z.boss && z.sinceBoss>=40); }
+function zoneStage(zi, wins){ const need=D.ZONES[zi].wins, n=D.STAGES||10; const w=(wins==null)? (G.S.zones[zi].wins||0):wins; return Math.min(n, Math.floor(w*n/need)); }
+function grantStage(zi, before, after){ const n=D.STAGES||10; const a=zoneStage(zi,before), b=zoneStage(zi,after); if(b<=a) return;
+  const S=G.S; for(let s=a+1;s<=b;s++){ const gold=(D.STAGE_REWARD.gold||8)*(zi+1); S.gold+=gold; S.stats.goldEarned+=gold; S.stats.stages=(S.stats.stages||0)+1; S.zones[zi].stages=s;
+    S.chars.forEach(c=>{ if(c.job&&c.jobs[c.job]) c.jobs[c.job].jp=(c.jobs[c.job].jp||0)+(D.STAGE_REWARD.jp||1); });
+    let extra=''; if(s===5||s===10){ gain('diamond',1); extra=' +1💎'; }
+    log(`🚩 ${D.ZONES[zi].name} stage ${s}/${n}: +${gold} gold${extra}.`,'good'); toast(`🚩 Stage ${s}/${n}${extra}`,'good'); } }
+function bossReady(zi){ const z=G.S.zones[zi]; return (!z.boss && z.wins>=D.ZONES[zi].wins) || (z.boss && z.sinceBoss>=(D.BOSS_REMATCH||20)); }
+function bossMayAppear(zi){ if(bossReady(zi)) return true; const z=G.S.zones[zi]; if(z.boss && z.sinceBoss>=8 && Math.random()<(D.BOSS_CHANCE||0.08)) return true; return false; }
+
 function zoneUnlocked(zi){ return zoneOpen(zi); }
 function maxZoneOpen(){ let m=0; D.ZONES.forEach((z,i)=>{ if(zoneOpen(i)) m=i; }); return m; }
 function partyStam(){ return Math.min(...G.S.chars.map(c=>c.stam)); }
@@ -529,12 +616,14 @@ function canDepart(){ const S=G.S; if(S.loc!=='town') return {ok:false, why:'Alr
   if(low.length) return {ok:false, why:`${low.map(c=>c.name).join(', ')} need${low.length>1?'':'s'} at least ${D.STAM.minDepart} stamina`}; return {ok:true}; }
 function depart(zi, boss){ const S=G.S; if(!zoneOpen(zi)) return false; const a=canDepart(); if(!a.ok) return false;
   S.zone=zi; S.loc='exp'; S.exp={zi, battles:0, wins:0, gold:0, xp:0, start:Date.now()}; S.battle=null; S.pause=PACE.start; S.pendingBoss=!!boss && bossReady(zi);
-  // eat the best meal in the larder
-  S.food=null; const meal=[...D.FOODS].reverse().find(f=>(S.meals[f.id]||0)>0); if(meal){ S.meals[meal.id]--; S.food=meal.id; log(`${meal.icon} The party eats ${meal.name} (${meal.desc}).`,'good'); }
+  // eat one of each packed meal so their buffs stack; a later recipe never replaces an earlier one
+  S.food=null; S.foods=[]; const ate=[];
+  for(const f of D.FOODS){ if((S.meals[f.id]||0)>0){ S.meals[f.id]--; S.foods.push(f.id); ate.push(`${f.icon} ${f.name}`); } }
+  if(ate.length){ S.food=S.foods[S.foods.length-1]; log(`${ate.join(', ')} — the party eats one of each packed dish.`,'good'); }
   S.chars.forEach(c=>{ const d=calcBase(c); c.hp=d.maxHp; c.mp=d.maxMp; });
   dirty(); S.stats.departs++; log(`🔥 The party sets out for ${D.ZONES[zi].name}.`,'good'); emit({t:'depart'}); return true; }
 function goHome(reason){ const S=G.S; if(S.loc!=='exp') return; const e=S.exp||{};
-  S.loc='town'; S.battle=null; S.pendingBoss=false; S.pause=0; S.food=null; S.stats.returns++;
+  S.loc='town'; S.battle=null; S.pendingBoss=false; S.pause=0; S.food=null; S.foods=[]; S.stats.returns++;
   S.lastExp=Object.assign({}, e, {reason, end:Date.now(), zi:S.zone});
   const msg = reason==='wipe' ? '💀 The party fell. Villagers carried everyone home to Lanternfall.' : reason==='tired' ? '😮‍💨 The party is out of stamina and walks home to rest.' : '🏠 The party returns to Lanternfall.';
   log(msg, reason==='wipe'?'ko':'good'); toast(msg, reason==='wipe'?'bad':'good');
@@ -566,10 +655,11 @@ function step(){
   const S=G.S;
   if(!S.started || S.loc!=='exp') return 0;
   if(!S.battle){
-    const boss = S.pendingBoss || (S.settings.autoBoss && bossReady(S.zone));
+    const autoBoss = S.pendingBoss || ((S.settings.autoBoss && bossReady(S.zone)) || (S.zones[S.zone].boss && bossMayAppear(S.zone)));
+    const boss = autoBoss;
     const cost = boss ? D.STAM.boss : D.STAM.battle;
     if(S.chars.some(c=>c.stam < cost)){ if(boss && !S.chars.some(c=>c.stam<D.STAM.battle)){ S.pendingBoss=false; log('Too tired to face the boss; fighting on.'); } else { goHome('tired'); return 0; } }
-    const b2 = S.pendingBoss || (S.settings.autoBoss && bossReady(S.zone)); const c2 = b2?D.STAM.boss:D.STAM.battle;
+    const b2 = S.pendingBoss || ((S.settings.autoBoss && bossReady(S.zone)) || (S.zones[S.zone].boss && bossMayAppear(S.zone))); const c2 = b2?D.STAM.boss:D.STAM.battle;
     S.pendingBoss=false; S.chars.forEach(c=>{ c.stam=Math.max(0, c.stam-c2); });
     startBattle(b2); S.battle.t0=S.stats.play; return PACE.start;
   }
@@ -586,11 +676,15 @@ function levelUp(c, i){ let n=0; while(c.xp>=xpNeed(c.lv) && c.lv<MAX_LV){ c.xp-
     if(G.sum) G.sum.levels++; } if(n) dirty(); }
 function victory(){
   const S=G.S, B=S.battle; const zi=B.zi; const Z=D.ZONES[zi];
-  let xp=0, gold=0; B.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; addKill(e.id, 1); S.stats.kills++; if(e.gild){ const first=!S.variants[e.id]; S.variants[e.id]=(S.variants[e.id]||0)+1; if(first){ log(`📚 First Gilded ${findEnemyDef(e.id).name} recorded in the bestiary!`,'rare'); checkCollections(); } } });
+  let xp=0, gold=0; B.enemies.forEach(e=>{ xp+=e.xp; gold+=e.gold; addKill(e.id, 1); S.stats.kills++;
+    S.beastXp[e.id]=(S.beastXp[e.id]||0)+e.xp; S.beastGold[e.id]=(S.beastGold[e.id]||0)+e.gold;
+    if(e.gild){ const first=!S.variants[e.id]; S.variants[e.id]=(S.variants[e.id]||0)+1; if(first){ log(`📚 First Gilded ${findEnemyDef(e.id).name} recorded in the bestiary!`,'rare'); checkCollections(); } } });
   const ds=S.chars.map(c=>calc(c,B.buffs));
   const midas = ds.some(d=>d.f.gold>=1);
   const goldB = Math.min(1, ds.reduce((a,d)=>a+(d.f.gold||0),0) - (midas?1:0));
+  const xpB = Math.min(0.35, ds.reduce((a,d)=>a+(d.f.xp||0),0));
   gold = Math.max(1, Math.round(gold*(1+goldB)*(midas?2:1)*rnd(.85,1.15)));
+  xp = Math.max(1, Math.round(xp*(1+xpB)));
   S.gold+=gold; S.stats.goldEarned+=gold; S.stats.wins++; S.stats.battles++; S.stats.rounds+=B.round;
   if(S.exp){ S.exp.wins++; S.exp.battles++; S.exp.gold+=gold; S.exp.xp+=xp; }
   log(`Victory! +${xp} XP, +${gold} gold.`, 'win');
@@ -607,7 +701,7 @@ function victory(){
     }
     const md=calcBase(c); if(c.hp<=0) c.hp=1; else c.hp=Math.min(md.maxHp, c.hp+Math.round(md.maxHp*.15)+(d.f.postHeal||0)); c.mp=Math.min(md.maxMp, c.mp+1);
   });
-  const z=S.zones[zi]; if(!B.boss){ z.wins++; if(z.boss) z.sinceBoss++; }
+  const z=S.zones[zi]; if(!B.boss){ const before=z.wins; z.wins++; if(z.boss) z.sinceBoss++; grantStage(zi, before, z.wins); }
   if(B.boss){ S.stats.bosses++; z.bossKills++; z.sinceBoss=0;
     if(!z.boss){ z.boss=true; dirty(); log(`🏆 ${Z.boss.name} is defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' is now open.':'You have conquered Lanternfall!'}`,'boss'); toast(`🏆 Boss defeated! ${zi+1<D.ZONES.length? D.ZONES[zi+1].name+' is open on the Map.':''}`,'relic'); if(G.sum) G.sum.notes.push('Beat '+Z.boss.name); checkCollections(); } }
   S.battle=null; emit({t:'win'});
@@ -636,14 +730,29 @@ function bannerTierCap(b){ const L=G.S.buildings[b]; return Math.max(0, Math.min
 function bannerPool(b){ const t=D.BANNERS[b].type, cap=bannerTierCap(b); return D.ITEMS.filter(it=>it.tier<=cap && it.skills.some(s=>D.SKILLS[s].type===t)); }
 function bannerRates(b, L){ L=L==null?G.S.buildings[b]:L; return D.BANNER_RATES[Math.max(1,Math.min(D.BMAX,L))]; }
 function rollRarity(rates, minR){ let x=Math.random()*100, r=0; for(let i=0;i<rates.length;i++){ x-=rates[i]; if(x<=0){ r=i; break; } r=i; } return Math.max(r, minR||0); }
+function featuredItem(){ const S=G.S; S.feature=S.feature||{day:'',id:null,r:0,taken:0}; const day=new Date(G.now()).toDateString();
+  if(S.feature.day!==day || !S.feature.id || !D.ITEM[S.feature.id]){
+    const cap=Math.max(0, ...D.BANNER_ORDER.map(b=>S.buildings[b]?bannerTierCap(b):0));
+    const pool=D.ITEMS.filter(it=>it.tier>=Math.min(Math.max(cap-1,2),6) && it.tier<=Math.max(cap,3) && (it.skills.length||it.bonus));
+    const bag=pool.length?pool:D.ITEMS.filter(it=>it.tier>=2);
+    const it=bag[Math.floor(Math.random()*bag.length)]||D.ITEMS[D.ITEMS.length-1];
+    const r=Math.min((D.RARITY.length-1), cap>=7?5:cap>=5?4:3);
+    S.feature={day, id:it.id, r, taken:0};
+  }
+  return S.feature;
+}
+function pullFeatured(){ const S=G.S, f=featuredItem(); if(f.taken || S.diamonds<D.PULL_COST) return null;
+  S.diamonds-=D.PULL_COST; f.taken=1; const u=addItem(f.id, f.r); S.stats.pulls++; log(`⭐ Featured ${D.RARITY[f.r].name} ${D.ITEM[f.id].icon} ${D.ITEM[f.id].name}!`,'rare'); return {uid:u.uid,id:f.id,r:f.r,isNew:true,featured:1}; }
 function pull(b, n){
   const S=G.S; n=n===10?10:1; const cost=n===10?D.PULL10_COST:D.PULL_COST; if(!S.buildings[b]||S.diamonds<cost) return null;
   S.diamonds-=cost; const pool=bannerPool(b), cap=bannerTierCap(b), rates=bannerRates(b); const out=[];
+  S.pityM=S.pityM||{};
   for(let i=0;i<n;i++){
-    S.pity[b]=(S.pity[b]||0)+1; let minR=0;
+    S.pity[b]=(S.pity[b]||0)+1; S.pityM[b]=(S.pityM[b]||0)+1; let minR=0;
     if(S.pity[b]>=D.PITY) minR=3;
+    if(D.PITY_MYTHIC && S.pityM[b]>=D.PITY_MYTHIC) minR=5;
     if(n===10 && i===9 && !out.some(x=>x.r>=2)) minR=Math.max(minR,2);
-    const r=rollRarity(rates, minR); if(r>=3) S.pity[b]=0;
+    const r=rollRarity(rates, minR); if(r>=3) S.pity[b]=0; if(r>=5) S.pityM[b]=0;
     const w=pool.map(it=>it.tier===cap?3:1); let x=Math.random()*w.reduce((a,c)=>a+c,0), it=pool[0]; for(let k=0;k<pool.length;k++){ x-=w[k]; if(x<=0){ it=pool[k]; break; } }
     const u=addItem(it.id, r); out.push({uid:u.uid, id:it.id, r, isNew:!S.inv.some(v=>v.uid!==u.uid && v.id===it.id)});
     S.stats.pulls++;
@@ -652,12 +761,13 @@ function pull(b, n){
   return out;
 }
 // Forge fusing: 3 unworn copies of the same item & rarity -> 1 of the next rarity
-function fuseLimit(){ return Math.min(4, Math.floor(G.S.buildings.forge/2)); }
+function fuseLimit(){ const L=G.S.buildings.forge||0; return L>=8?5:Math.min(4, Math.floor(L/2)); }
 function fuseCost(r){ return 40*Math.pow(3,r); }
-function fusable(){ const S=G.S, g={}; for(const u of S.inv){ if(u.relic||equippedBy(u.uid)>=0) continue; const k=u.id+':'+(u.r||0); (g[k]=g[k]||[]).push(u); }
-  return Object.entries(g).filter(([k,a])=>a.length>=3).map(([k,a])=>({id:a[0].id, r:a[0].r||0, n:a.length, ok:(a[0].r||0)+1<=fuseLimit()&&(a[0].r||0)<4})); }
-function fuse(id, r){ const S=G.S; if(r+1>fuseLimit()) return false; const a=S.inv.filter(u=>!u.relic&&u.id===id&&(u.r||0)===r&&equippedBy(u.uid)<0); if(a.length<3||S.gold<fuseCost(r)) return false;
-  S.gold-=fuseCost(r); for(const u of a.slice(0,3)) S.inv.splice(S.inv.indexOf(u),1); const nu=addItem(id, r+1); log(`⚒️ Fused 3 ${D.ITEM[id].name} into a ${D.RARITY[r+1].name} one!`,'good'); return nu; }
+function fuseNeed(){ return D.FUSE_NEED||10; }
+function fusable(){ const S=G.S, g={}, need=fuseNeed(); for(const u of S.inv){ if(u.relic||equippedBy(u.uid)>=0) continue; const k=u.id+':'+(u.r||0); (g[k]=g[k]||[]).push(u); }
+  return Object.entries(g).filter(([k,a])=>a.length>=need).map(([k,a])=>({id:a[0].id, r:a[0].r||0, n:a.length, ok:(a[0].r||0)+1<=fuseLimit()&&(a[0].r||0)<((D.RARITY.length)-1)})); }
+function fuse(id, r){ const S=G.S, need=fuseNeed(); if(r+1>fuseLimit()) return false; const a=S.inv.filter(u=>!u.relic&&u.id===id&&(u.r||0)===r&&equippedBy(u.uid)<0); if(a.length<need||S.gold<fuseCost(r)) return false;
+  S.gold-=fuseCost(r); for(const u of a.slice(0,need)) S.inv.splice(S.inv.indexOf(u),1); const nu=addItem(id, r+1); log(`⚒️ Fused ${need} ${D.ITEM[id].name} into a ${D.RARITY[r+1].name} one!`,'good'); return nu; }
 
 /* ---------------- party creation ---------------- */
 function createParty(list){ const S=G.S; S.chars=list.slice(0,3).map(x=>newChar(x.name.trim().slice(0,12)||'Hero', x.race));
@@ -668,11 +778,41 @@ function createParty(list){ const S=G.S; S.chars=list.slice(0,3).map(x=>newChar(
   S.started=true; S.loc='town'; log('Three companions arrive in the village of Lanternfall.','good'); dirty();
 }
 
+
+/* ---------------- bank, drill, bag sort ---------------- */
+function bankRate(){ const S=G.S; const w=S.workers.banking||0; const lv=(S.profs.banking&&S.profs.banking.lv)||1; const B=D.BANK||{rateDay:0.008,workerBonus:0.0015,maxRateDay:0.02}; return Math.min(B.maxRateDay, (B.rateDay||0.008)+w*(B.workerBonus||0.0015)+(lv-1)*0.0004); }
+function tickBank(dt){ const S=G.S; if(!S||!S.bank) return; if(S.bank.gold>0){ const inc=S.bank.gold*bankRate()*(dt/86400); S.bank.gold+=inc; S.bank.earned=(S.bank.earned||0)+inc; if(S.stats) S.stats.interest=(S.stats.interest||0)+inc; } }
+function bankDeposit(n){ const S=G.S; n=Math.floor(n); if(n<=0||S.gold<n) return false; S.gold-=n; S.bank.gold+=n; dirty(); return true; }
+function bankWithdraw(n){ const S=G.S; n=Math.min(Math.floor(n), Math.floor(S.bank.gold)); if(n<=0) return false; S.bank.gold-=n; S.gold+=n; dirty(); return true; }
+function bankConvert(n){ const S=G.S, rate=(D.BANK&&D.BANK.goldPerDia)||600; n=Math.floor(n)||1; const need=n*rate; if((S.bank.earned||0)<need || S.bank.gold<need) return false; S.bank.gold-=need; S.bank.earned-=need; gain('diamond', n); dirty(); return true; }
+function drillCap(){ return ((D.DRILL&&D.DRILL.cap)||80) + Math.max(0, ((G.S.buildings.training||1)-1)*4); }
+function canDrill(ci){ const c=G.S.chars[ci]; if(!c) return false; const last=(c.drill&&c.drill.last)||0; return G.now()-last >= ((D.DRILL&&D.DRILL.cooldown)||45)*1000; }
+function drillWait(ci){ const c=G.S.chars[ci]; const last=(c.drill&&c.drill.last)||0; return Math.max(0, ((D.DRILL&&D.DRILL.cooldown)||45) - (G.now()-last)/1000); }
+function applyDrill(ci, quality){ const c=G.S.chars[ci]; if(!c) return null; c.drill=Object.assign({xp:0,gold:0,n:0,last:0}, c.drill||{}); c.drill.last=G.now();
+  if(quality==='miss') return {ok:false, drill:c.drill, pts:0};
+  const pts=quality==='perfect'?((D.DRILL&&D.DRILL.perfect)||3):((D.DRILL&&D.DRILL.good)||1);
+  const cap=drillCap(); c.drill.xp=Math.min(cap, (c.drill.xp||0)+pts); c.drill.gold=Math.min(cap, (c.drill.gold||0)+pts); c.drill.n=(c.drill.n||0)+1;
+  if(G.S.stats) G.S.stats.drills=(G.S.stats.drills||0)+1; dirty();
+  log(`🎯 ${c.name} finishes a Focus Drill (${quality}). Permanent XP/gold +${((c.drill.xp||0)*((D.DRILL&&D.DRILL.unit)||0.001)*100).toFixed(1)}%.`,'good');
+  return {ok:true, drill:c.drill, pts, quality}; }
+function sortInv(mode){ const S=G.S; mode=mode||S.bagSort||'rarity'; S.bagSort=mode;
+  const w={weapon:0,armor:1,acc:2,relic:3};
+  const key={
+    rarity: u=>[-(u.relic?5:(u.r||0)), -(defOf(u).tier||0), w[defOf(u).slot]||9, (defOf(u).name||'')],
+    tier:   u=>[-(defOf(u).tier||0), -(u.relic?5:(u.r||0)), w[defOf(u).slot]||9, (defOf(u).name||'')],
+    slot:   u=>[w[defOf(u).slot]||9, -(u.relic?5:(u.r||0)), -(defOf(u).tier||0), (defOf(u).name||'')],
+    name:   u=>[(defOf(u).name||''), -(u.r||0)]
+  }[mode]||null;
+  if(!key) return S.inv;
+  S.inv.sort((a,b)=>{ const ka=key(a), kb=key(b); for(let i=0;i<ka.length;i++){ if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1; } return 0; });
+  return S.inv;
+}
+
 /* ---------------- time ---------------- */
 function tick(dtMs){
   const S=G.S; if(!S.started) return;
   const dt=dtMs/1000; S.stats.play+=dt;
-  tickProfs(dt); tickTown(dt);
+  tickProfs(dt); tickTown(dt); tickBank(dt);
   if(S.loc!=='exp') return;
   S.pause -= dtMs; let guard=0;
   while(S.pause<=0 && guard++<6 && S.loc==='exp'){ const w=step(); S.pause += (w||PACE.action); }
@@ -688,7 +828,7 @@ function offline(sec){
     let t=0; const total=sec*1000; let g=0;
     if(S.loc==='exp'){ t=Math.max(0,S.pause); S.pause=0; while(t<total && S.loc==='exp' && g++<300000){ t += (step()||PACE.action); } }
     sum.fightSec=Math.min(sec, t/1000);
-    let left=sec; while(left>0){ const c=Math.min(10,left); tickProfs(c); left-=c; }
+    let left=sec; while(left>0){ const c=Math.min(10,left); tickProfs(c); tickBank(c); left-=c; }
     let town=sec-sum.fightSec; while(town>0 && S.loc==='town'){ const c=Math.min(10,town); tickTown(c); town-=c; }
     if(S.loc==='exp') S.pause=PACE.action;
   } finally { G.quiet=q; G.sum=null; }

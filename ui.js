@@ -2,7 +2,7 @@
 /* Lanternfall v2 — UI (phone-first). Town map, world map, expedition battles, party, codex. */
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const UI = {tab:'town', place:null, placeTab:null, sel:0, heroTab:'overview', codex:'bestiary', mapSel:0, node:null, jobView:null, open:{}, pointer:false, lastPanel:0, modalOpen:false, battleKey:null, gearSlot:null, shopSel:null, shopMode:'buy', version:'2.0'};
+const UI = {tab:'town', place:null, placeTab:null, sel:0, heroTab:'overview', codex:'bestiary', mapSel:0, node:null, jobView:null, open:{}, pointer:false, lastPanel:0, modalOpen:false, battleKey:null, gearSlot:null, shopSel:null, shopMode:'buy', version:'2.1'};
 window.__G = G; window.__D = D; window.__UI = UI;
 
 /* ---------------- helpers ---------------- */
@@ -19,7 +19,7 @@ const skillName = id => { const s=D.SKILLS[id]; return `${D.TYPES[s.type].icon} 
 const portrait = (c, ci) => { const same=G.S.chars.slice(0,ci).filter(x=>x.race===c.race).length; return `<img class="pt ${same%2?'flip':''}" src="art/race_${c.race}.webp" alt="${esc(c.name)}">`; };
 const enemyImg = id => `art/e_${id}.webp`;
 const stars = (L, max) => `<span class="stars">${'★'.repeat(Math.min(L,max||8))}${'☆'.repeat(Math.max(0,(max||8)-L))}</span>`;
-const costHtml = c => `${c.gold?goldChip(c.gold):''}${Object.entries(c.mats).map(([m,n])=>matChip(m,n)).join('')}${c.prof?`<span class="mchip ${G.S.profs[c.prof].lv<c.profLv?'short':''}">${D.PROFS[c.prof].icon} ${D.PROFS[c.prof].name} <b>Lv ${G.S.profs[c.prof].lv}/${c.profLv}</b></span>`:''}`;
+const costHtml = c => `${c.gold?goldChip(c.gold):''}${Object.entries(c.mats).map(([m,n])=>matChip(m,n)).join('')}${c.prof?`<span class="mchip ${G.S.profs[c.prof].lv<c.profLv?'short':''}">${D.PROFS[c.prof].icon} ${D.PROFS[c.prof].name} <b>Lv ${G.S.profs[c.prof].lv}/${c.profLv}</b></span>`:''}${c.masonry?`<span class="mchip ${(G.S.profs.masonry&&G.S.profs.masonry.lv)<c.masonry?'short':''}">🧱 Masonry <b>Lv ${(G.S.profs.masonry&&G.S.profs.masonry.lv)||0}/${c.masonry}</b></span>`:''}`;
 const actName = a => a==='rest'?'😴 Resting (stamina ×2)':a==='train'?'🎯 Training Endurance':a.startsWith('m:')?`🎓 Studying with ${D.MENTOR[a.slice(2)].name}`:a;
 function guard(name, fn, el){ try{ return fn(); }catch(e){ console.error(name, e); if(el) el.innerHTML=`<div class="err parch">⚠️ Something went wrong drawing this page (${esc(name)}). The game is still running.<br><small>${esc(e.message)}</small><br><button class="btn" data-a="tab" data-t="town">Back to town</button></div>`; } }
 const H2 = (t, sub) => `<h2 class="h2">${t}${sub?`<small>${sub}</small>`:''}</h2>`;
@@ -105,15 +105,16 @@ function viewPlace(p){
   const kind=P.kind; let tabs=[]; let body='';
   const L=placeLevel(p);
   if(kind==='banner'){ tabs=[['pull','💎 Pull'],['mentors','🎓 Mentors'],['up','🏗️ Upgrade']]; if(p==='forge') tabs.splice(2,0,['fuse','⚒️ Fuse']); }
-  else if(kind==='training') tabs=[['train','🎯 Endurance'],['mentors','🎓 Mentors'],['up','🏗️ Upgrade']];
+  else if(kind==='training') tabs=[['train','🎯 Training'],['mentors','🎓 Mentors'],['up','🏗️ Upgrade']];
   else if(kind==='market') tabs=[['buy','Buy'],['sell','Sell'],['up','🏗️ Upgrade']];
   else if(kind==='tavern'||kind==='library') tabs=[['main',kind==='tavern'?'🍲 Meals':'📚 Studies'],['up','🏗️ Upgrade']];
+  else if(kind==='hall') tabs=[['work','🧑‍🌾 Workers'],['bank','🏦 Bank'],['feat','⭐ Featured']];
   if(!tabs.find(t=>t[0]===UI.placeTab)) UI.placeTab=tabs.length?tabs[0][0]:null;
   if(D.BUILD[p] && L<1 && UI.placeTab!=='mentors') UI.placeTab='up';
   const t=UI.placeTab;
   if(t==='up') body=upgradeCard(p);
   else if(t==='mentors') body=placeMentors(p);
-  else if(kind==='hall') body=placeHall();
+  else if(kind==='hall') body = t==='bank'?placeBank(): t==='feat'?placeFeatured():placeHall();
   else if(kind==='mine') body=placeMine();
   else if(kind==='banner') body = t==='fuse'?placeFuse():placeBanner(p);
   else if(kind==='training') body=placeTraining();
@@ -128,21 +129,45 @@ function profRow(p){ const S=G.S, pr=S.profs[p], P=D.PROFS[p]; const need=profNe
     <div class="small">${esc(P.desc)}</div><div class="small out">${esc(profPerkText(p))}</div></div>
     <div class="wbtn"><button class="btn sm" data-a="work" data-p="${p}" data-d="1" ${workersUsed()>=workerSlots()?'disabled':''}>＋</button><button class="btn sm" data-a="work" data-p="${p}" data-d="-1" ${w?'':'disabled'}>－</button></div></div>`; }
 function placeHall(){ const S=G.S; const hc=hireCost();
-  return `<div class="parch card"><h3>Workers ${workersUsed()}/${workerSlots()}</h3><p class="small">Town work is where items come from: materials, gems, meals, Common gear and 💎. Fighting earns the gold to hire more hands.</p>
+  return `<div class="parch card"><h3>Workers ${workersUsed()}/${workerSlots()}</h3><p class="small">Town work is where items come from: materials, gems, meals, Common gear and 💎. Fighting earns the gold to hire more hands. Masonry is required to raise most buildings past the first level. Banking tends the coffers on the Bank tab.</p>
     ${hc!=null?`<div class="row gap"><button class="btn go" data-a="hire" ${S.gold>=hc?'':'disabled'}>Hire ${esc(D.WORKER_NAMES[S.hired]||'a worker')} — 🪙 ${hc.toLocaleString()}</button>${S.gold<hc?`<span class="small short">Need ${hc-S.gold} more gold. Fight more!</span>`:''}</div>`:'<p class="ok">Every house in town is working.</p>'}</div>
     <div class="parch card"><h3>Professions</h3><div class="sklist">${D.PROF_ORDER.map(profRow).join('')}</div></div>`; }
+function placeBank(){ const S=G.S; S.bank=S.bank||{gold:0,earned:0,convertAcc:0}; const rate=bankRate(); const diaRate=(D.BANK&&D.BANK.goldPerDia)||600;
+  const canC=Math.floor((Math.min(S.bank.gold, S.bank.earned||0))/diaRate);
+  return `<div class="parch card bank"><h3>🏦 Town Bank</h3><p class="small">Deposit gold to keep it earning slow interest (${(rate*100).toFixed(2)}% / day${S.workers.banking?`, with ${S.workers.banking} banker${S.workers.banking>1?'s':''}`:''}). Interest — not the original deposit — can be changed into 💎 at ${diaRate} gold apiece. Gold stays useful late.</p>
+    <div class="row gap wrap"><span class="chip">On deposit 🪙 ${Math.floor(S.bank.gold).toLocaleString()}</span><span class="chip">Lifetime interest 🪙 ${(S.bank.earned||0).toFixed(1)}</span><span class="chip">Purse 🪙 ${S.gold.toLocaleString()}</span></div>
+    <div class="row gap wrap"><button class="btn sm" data-a="bankDep" data-n="100" ${S.gold>=100?'':'disabled'}>Deposit 100</button>
+      <button class="btn sm" data-a="bankDep" data-n="half" ${S.gold>=2?'':'disabled'}>Deposit half</button>
+      <button class="btn sm go" data-a="bankDep" data-n="all" ${S.gold>=1?'':'disabled'}>Deposit all</button>
+      <button class="btn sm" data-a="bankWd" data-n="half" ${S.bank.gold>=2?'':'disabled'}>Withdraw half</button>
+      <button class="btn sm" data-a="bankWd" data-n="all" ${S.bank.gold>=1?'':'disabled'}>Withdraw all</button></div>
+    <p class="small">Convertible interest: 🪙 ${Math.floor(Math.min(S.bank.gold, S.bank.earned||0)).toLocaleString()} → up to ${canC} 💎</p>
+    <button class="btn go" data-a="bankConv" data-n="1" ${canC>=1?'':'disabled'}>Change ${diaRate} interest into 1 💎</button></div>`; }
+function placeFeatured(){ const S=G.S, f=featuredItem(); const it=D.ITEM[f.id]; const R=D.RARITY[f.r];
+  return `<div class="parch card featured"><h3>⭐ Today's featured item</h3><p class="small">A strong piece cycles in each day — high rarity, with a real skill or a worn passive. One featured pull per day. Come back tomorrow for the next one.</p>
+    <div class="featbox rn r${f.r}"><div class="big">${it.icon}</div><b>${esc(it.name)}</b> <span class="rn r${f.r}">${R.name}</span>
+      <div class="small">${D.SLOT_NAMES[it.slot]} · tier ${it.tier} · ${statLine(it.stats)}</div>
+      <div class="small">Teaches: ${it.skills.map(s=>skillName(s)).join(', ')||'—'}${it.bonus?` · worn: ${Object.entries(it.bonus).map(([k,v])=>k==='stat'?'':(typeof v==='number'&&v<1?`+${Math.round(v*100)}% ${k}`:`+${v} ${k}`)).filter(Boolean).join(', ')}`:''}</div>
+    </div>
+    ${f.taken?'<p class="ok small">Already claimed today. The next featured item arrives at midnight.</p>':`<button class="btn go" data-a="pullFeat" ${S.diamonds>=D.PULL_COST?'':'disabled'}>Featured pull · 💎${D.PULL_COST}</button>`}</div>`; }
 function placeMine(){ const S=G.S;
   return `<div class="parch card"><h3>💎 Diamonds: ${S.diamonds}</h3><p class="small">Only the mine digs up Diamonds, and slowly: one dig at a time. They also come from a boss's first defeat (+10) and from bestiary milestones. Spend them in the gear halls.</p>
     <div class="sklist">${profRow('mining')}</div></div><div class="parch card"><h3>Gems for sale</h3><div class="chips">${Object.keys(D.MATS).filter(m=>D.MATS[m].gem).map(m=>matChip(m)).join('')}</div><button class="btn" data-a="sellGems">Sell gems at the Market</button></div>`; }
 function mentorCard(m){ const S=G.S; const avail=mentorAvailable(m.id); const j=D.JOBS[m.job];
+  const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v;
   const rows=S.chars.map((c,ci)=>{ const st=c.mentors[m.id]||{rank:0,xp:0}; const here=c.act==='m:'+m.id; const r=st.rank, need=mentorNeed(r);
-    const plus=D.MENTOR_PLUS(r), minus=D.MENTOR_MINUS(r); const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v;
+    const plus=D.MENTOR_PLUS(r), minus=D.MENTOR_MINUS(r);
     return `<div class="mrow">${portrait(c,ci)}<div class="grow"><b>${esc(c.name)}</b> <span class="lv">Rank ${r}/${D.MENTOR_MAX}</span>
       ${r<D.MENTOR_MAX?bar(st.xp, need, 'xp', `${here?fmtTime(need-st.xp)+' to rank '+(r+1):'not studying'} · ${Math.floor(pct(st.xp,need))}%`):'<div class="ok small">Mastered</div>'}
-      <div class="small">${r?`<span class="up">+${k(plus)} ${D.STAT_NAMES[m.plus]}</span>${minus?` <span class="down">−${m.minus==='hp'?minus*2:minus} ${D.STAT_NAMES[m.minus]}</span>`:''}`:`<span class="muted">Rank 1: +${k(1)} ${D.STAT_NAMES[m.plus]} and the subjob</span>`}${r>=1?` · <span class="ok">${j.icon} ${j.name} subjob open</span>`:''}${j.adv&&r>=3?` · <span class="ok">can be main job</span>`:''}</div></div>
+      <div class="small">${r?`<span class="up">+${k(plus)} ${D.STAT_NAMES[m.plus]}</span>${minus?` <span class="down">−${m.minus==='hp'?minus*2:minus} ${D.STAT_NAMES[m.minus]}</span>`:''}`:`<span class="muted">Rank 1: +${k(1)} ${D.STAT_NAMES[m.plus]} and the main job</span>`}${r>=1?` · <span class="ok">${j.icon} ${j.name} main job open</span>`:''}${r>=3?` · <span class="ok">sub job open</span>`:''}</div></div>
       ${S.loc==='town'?`<button class="btn sm ${here?'on':''}" data-a="act" data-i="${ci}" data-v="${here?'rest':'m:'+m.id}" ${avail?'':'disabled'}>${here?'Stop':'Study'}</button>`:''}</div>`; }).join('');
-  return `<div class="parch card mentor"><div class="mhead"><img class="mp" src="art/m_${m.id}.webp" alt=""><div><h3>${esc(m.name)}</h3><div class="small">${j.icon} Teaches the <b>${j.name}</b> subjob${j.adv?' (and the job itself at rank 3)':''}</div>
-    <div class="small">Each rank: <span class="up">↑ ${D.STAT_NAMES[m.plus]}</span> grows, <span class="down">↓ ${D.STAT_NAMES[m.minus]}</span> slips every 3rd rank.</div><div class="say">“${esc(m.line)}”</div></div></div>
+  const gifts=m.gifts||{}; const glist=[1,2,3,4,5,6,7,8,9,10].map(rk=>{ const plusN=D.MENTOR_PLUS(rk); const minusN=D.MENTOR_MINUS(rk); const g=gifts[rk];
+    const bits=[`<span class="up">+${k(plusN)} ${D.STAT_NAMES[m.plus]}</span>`]; if(minusN) bits.push(`<span class="down">−${m.minus==='hp'?minusN*2:minusN} ${D.STAT_NAMES[m.minus]}</span>`);
+    if(rk===1) bits.push('unlocks the main job'); if(rk===3) bits.push('unlocks the sub job'); if(g) bits.push(`<b>${esc(g.name)}</b> — ${esc(g.desc)}`);
+    return `<li class="${S.chars.some(c=>mentorRank(c,m.id)>=rk)?'ok':''}"><b>Rank ${rk}</b> ${bits.join(' · ')}</li>`; }).join('');
+  return `<div class="parch card mentor"><div class="mhead"><img class="mp" src="art/m_${m.id}.webp" alt=""><div><h3>${esc(m.name)}</h3><div class="small">${j.icon} Teaches the <b>${j.name}</b> job (main at rank 1, sub at rank 3). Ranks 5, 7 and 10 grant a gift only this mentor can give.</div>
+    <div class="small">Every rank: <span class="up">↑ ${D.STAT_NAMES[m.plus]}</span> grows. <span class="down">↓ ${D.STAT_NAMES[m.minus]}</span> slips every 3rd rank.</div><div class="say">“${esc(m.line)}”</div></div></div>
+    <ol class="giftlist">${glist}</ol>
     ${avail?rows:`<p class="short small">Arrives when the ${esc(D.PLACES[m.place].name)} reaches Lv ${mentorNeedLv(m.id)}.</p>`}</div>`; }
 function placeMentors(p){ const S=G.S; return `${S.loc==='exp'?'<p class="parch card small">The party is away. Heroes can study only while they are in town.</p>':''}<p class="small pdesc">Heroes study while the party rests in town (stamina then recovers at the normal rate, not the rest rate). The longer they train, the bigger the bonus and the minus.</p>${D.MENTORS.filter(m=>m.place===p).map(mentorCard).join('')}`; }
 function hallArt(b){ return `<div class="hallart hall-${b}"><span>${D.BANNERS[b].icon}</span></div>`; }
@@ -153,14 +178,15 @@ function placeBanner(b){ const S=G.S, B=D.BANNERS[b], L=S.buildings[b];
   const pool=bannerPool(b); const cap=bannerTierCap(b);
   return `<div class="banner parch card">${hallArt(b)}<div class="bh"><h3>${B.icon} ${B.name} Hall</h3><div class="small">${esc(B.desc)} For: ${B.jobs}.</div></div>
     <div class="pullbar"><span class="dia">💎 ${S.diamonds}</span><button class="btn go" data-a="pull" data-b="${b}" data-n="1" ${S.diamonds>=D.PULL_COST?'':'disabled'}>Pull ×1 · 💎${D.PULL_COST}</button><button class="btn go" data-a="pull" data-b="${b}" data-n="10" ${S.diamonds>=D.PULL10_COST?'':'disabled'}>Pull ×10 · 💎${D.PULL10_COST}</button></div>
-    <div class="small">Pity: <b>${S.pity[b]||0}/${D.PITY}</b> — an Epic or better is guaranteed by pull ${D.PITY}. Every ×10 includes a Rare or better.</div>
+    <div class="small">Pity: <b>${S.pity[b]||0}/${D.PITY}</b> Epic+ · <b>${(S.pityM&&S.pityM[b])||0}/${D.PITY_MYTHIC||180}</b> Mythic. Every ×10 includes a Rare or better.</div>
+    ${(()=>{ const f=featuredItem(); const it=D.ITEM[f.id]; return `<div class="featmini">⭐ Today: <span class="rn r${f.r}">${it.icon} ${esc(it.name)} · ${D.RARITY[f.r].name}</span> ${f.taken?'(claimed)':`<button class="btn sm go" data-a="pullFeat">Claim · 💎${D.PULL_COST}</button>`} <button class="btn sm" data-a="place" data-p="hall">Town Hall</button></div>`; })()}
     ${S.diamonds<D.PULL_COST?`<p class="small short">Diamonds come from the ⛏️ Mine (a Mining worker), first boss wins and bestiary milestones.</p>`:''}</div>
-    <div class="parch card"><h3>Rates</h3>${ratesTable(b)}<p class="small">Higher rarity = bigger stats and faster skill learning (Rare +1 AP per win, Epic +2, Legendary +3).</p></div>
+    <div class="parch card"><h3>Rates</h3>${ratesTable(b)}<p class="small">Higher rarity = a much bigger stat boost (Mythic is 8× a Common) and faster skill learning (Rare +1 AP per win, up to Mythic +5).</p></div>
     <div class="parch card"><h3>In this hall (tiers 0–${cap})</h3><div class="pool">${pool.map(it=>`<button class="pi" data-a="itemInfo" data-id="${it.id}"><span>${it.icon}</span>${esc(it.name)}<small>${it.skills.map(s=>D.SKILLS[s].name).join(', ')}</small></button>`).join('')}</div>
     <p class="small muted">Upgrade the hall and travel farther to unlock stronger gear.</p></div>`; }
-function placeFuse(){ const S=G.S; const f=fusable();
-  return `<div class="parch card"><h3>⚒️ Fuse duplicates</h3><p class="small">Three unworn copies of the same item and rarity become one of the next rarity. The Forge level sets the highest rarity you can fuse into (now: <b>${D.RARITY[fuseLimit()]?D.RARITY[fuseLimit()].name:'—'}</b>).</p>
-    ${f.length?f.map(x=>`<div class="srow"><span>${rname({id:x.id,r:x.r})} ×${x.n}</span><button class="btn sm" data-a="fuse" data-id="${x.id}" data-r="${x.r}" ${x.ok&&S.gold>=fuseCost(x.r)?'':'disabled'}>Fuse → ${D.RARITY[x.r+1]?D.RARITY[x.r+1].name:'max'} · 🪙${fuseCost(x.r)}</button></div>`).join(''):'<p class="muted small">No set of three duplicates yet.</p>'}</div>`; }
+function placeFuse(){ const S=G.S; const f=fusable(); const need=fuseNeed();
+  return `<div class="parch card"><h3>⚒️ Fuse duplicates</h3><p class="small">${need} unworn copies of the same item and rarity become one of the next rarity. Mythic can be fused only at a fully upgraded Forge. The Forge level sets the highest rarity you can fuse into (now: <b>${D.RARITY[fuseLimit()]?D.RARITY[fuseLimit()].name:'—'}</b>).</p>
+    ${f.length?f.map(x=>`<div class="srow"><span>${rname({id:x.id,r:x.r})} ×${x.n}/${need}</span><button class="btn sm" data-a="fuse" data-id="${x.id}" data-r="${x.r}" ${x.ok&&S.gold>=fuseCost(x.r)?'':'disabled'}>Fuse → ${D.RARITY[x.r+1]?D.RARITY[x.r+1].name:'max'} · 🪙${fuseCost(x.r)}</button></div>`).join(''):'<p class="muted small">No set of '+need+' duplicates yet.</p>'}</div>`; }
 function placeTraining(){ const S=G.S; const cap=enduranceCap();
   return `<div class="parch card"><h3>🎯 Endurance</h3><p class="small">Stamina decides how long an expedition lasts: every battle costs 1 (a boss costs ${D.STAM.boss}). Training Endurance raises max stamina (+${D.STAM.perLv} per level) and recovery speed. The Training Grounds level caps Endurance at <b>${cap}</b>.</p>
     ${S.chars.map((c,ci)=>{ const need=enduranceNeed(c.endLv); const here=c.act==='train';
@@ -168,7 +194,12 @@ function placeTraining(){ const S=G.S; const cap=enduranceCap();
         ${bar(c.stam, maxStam(c), 'stam', `Stamina ${Math.floor(c.stam)}/${maxStam(c)}`)}
         ${c.endLv<cap?bar(c.endXp, need, 'xp', `${here?fmtTime(need-c.endXp)+' to Endurance '+(c.endLv+1):'not training'} · ${Math.floor(pct(c.endXp,need))}%`):`<div class="small">At the cap — upgrade the grounds.</div>`}
         <div class="small muted">Recovers 1 stamina every ${fmtTime(stamRegenSec(c))} (${fmtTime(stamRegenSec(c)/D.STAM.restMult)} when resting).</div></div>
-        ${S.loc==='town'?`<div class="col"><button class="btn sm ${here?'on':''}" data-a="act" data-i="${ci}" data-v="train" ${c.endLv>=cap?'disabled':''}>Train</button><button class="btn sm ${c.act==='rest'?'on':''}" data-a="act" data-i="${ci}" data-v="rest">Rest</button></div>`:''}</div>`; }).join('')}</div>`; }
+        ${S.loc==='town'?`<div class="col"><button class="btn sm ${here?'on':''}" data-a="act" data-i="${ci}" data-v="train" ${c.endLv>=cap?'disabled':''}>Train</button><button class="btn sm ${c.act==='rest'?'on':''}" data-a="act" data-i="${ci}" data-v="rest">Rest</button></div>`:''}</div>`; }).join('')}</div>
+    <div class="parch card drill"><h3>🎯 Focus Drill</h3><p class="small">A short timing exercise. A perfect hit grants a tiny <b>permanent</b> bonus to XP and gold earned (0.3% / 0.1%), capping around 8%. It never replaces stamina training — it just makes a session at the grounds a little less dull.</p>
+    ${S.chars.map((c,ci)=>{ const d=c.drill||{xp:0,gold:0,n:0}; const u=(D.DRILL&&D.DRILL.unit)||0.001; const ready=canDrill(ci); const wait=drillWait(ci);
+      return `<div class="mrow">${portrait(c,ci)}<div class="grow"><b>${esc(c.name)}</b>
+        <div class="small">Permanent bonus: <b>+${(d.xp*u*100).toFixed(1)}% XP</b> · <b>+${(d.gold*u*100).toFixed(1)}% gold</b> · ${d.n||0} drills · cap ${(drillCap()*u*100).toFixed(1)}%</div></div>
+        ${S.loc==='town'?`<button class="btn sm go" data-a="drillStart" data-i="${ci}" ${ready?'':'disabled'}>${ready?'Focus Drill': 'Ready in '+fmtTime(wait)}</button>`:''}</div>`; }).join('')}</div>`; }
 function compareFor(c, it, r){ // stat deltas if hero equipped this
   const cur=c.equip[it.slot]!=null?invItem(c.equip[it.slot]):null; const a=cur?defOf(cur).stats:{}; const b=scaledStats(it.stats, r||0); const keys=new Set([...Object.keys(a),...Object.keys(b)]);
   return [...keys].map(k=>{ const d=(b[k]||0)-(a[k]||0); return d?`<span class="${d>0?'up':'down'}">${D.STAT_NAMES[k]} ${d>0?'▲':'▼'}${Math.abs(d)}</span>`:''; }).join(' ') || '<span class="muted">same</span>'; }
@@ -176,24 +207,27 @@ function placeMarket(t){ const S=G.S;
   if(t==='sell'){ const items=S.inv.filter(u=>!u.relic && equippedBy(u.uid)<0);
     const gems=Object.keys(D.MATS).filter(m=>D.MATS[m].gem && S.mats[m]); const gv=gems.reduce((a,m)=>a+S.mats[m]*D.MATS[m].sell,0);
     return `<div class="shop"><div class="keeper parch"><img src="art/shopkeeper.webp" alt=""><div class="say">“Spare gear? I'll take it. Mastered pieces — whose skills everyone already knows — are safe to sell.”</div></div>
-      <div class="parch card"><div class="row gap"><button class="btn" data-a="sellMastered">Sell all mastered</button><button class="btn" data-a="sellGems" ${gv?'':'disabled'}>Sell gems · 🪙${gv}</button></div>
-      <table class="slist"><tr><th>Item</th><th>Price</th><th></th></tr>${items.map(u=>`<tr><td>${rname(u)}${isMastered(u)?' <small class="ok">mastered</small>':''}</td><td>🪙${sellPrice(u)}</td><td><button class="btn sm" data-a="sell" data-uid="${u.uid}">Sell</button></td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nothing unworn to sell.</td></tr>'}</table></div></div>`; }
+      <div class="parch card"><div class="row gap wrap"><button class="btn" data-a="sellMastered">Sell all mastered</button><button class="btn" data-a="sellGems" ${gv?'':'disabled'}>Sell gems · 🪙${gv}</button>
+        <label class="small">Sort <select data-sel="bagSort">${[['rarity','Rarity'],['tier','Tier'],['slot','Slot'],['name','Name']].map(([k,l])=>`<option value="${k}" ${(S.bagSort||'rarity')===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
+      <table class="slist"><tr><th>Item</th><th>Price</th><th></th></tr>${(sortInv(S.bagSort||'rarity'), S.inv.filter(u=>!u.relic && equippedBy(u.uid)<0)).map(u=>`<tr><td>${rname(u)}${isMastered(u)?' <small class="ok">mastered</small>':''}</td><td>🪙${sellPrice(u)}</td><td><button class="btn sm" data-a="sell" data-uid="${u.uid}">Sell</button></td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nothing unworn to sell.</td></tr>'}</table></div></div>`; }
   const items=shopItems(); if(!UI.shopSel||!items.find(i=>i.id===UI.shopSel)) UI.shopSel=items[0]&&items[0].id;
   const sel=D.ITEM[UI.shopSel];
-  return `<div class="shop"><div class="keeper parch"><img src="art/shopkeeper.webp" alt=""><div class="say">“Only plain, honest gear here — the good stuff comes out of the halls. ${S.buildings.market<3?'Upgrade my stall and I\'ll stock more.':''}”</div></div>
-    <div class="parch card"><table class="slist"><tr><th>Item</th><th>Price</th><th>Owned</th></tr>${items.map(it=>`<tr class="${it.id===UI.shopSel?'sel':''}" data-a="shopSel" data-id="${it.id}"><td>${it.icon} ${esc(it.name)}</td><td class="${S.gold<buyPrice(it)?'short':''}">🪙${buyPrice(it)}</td><td>${S.inv.filter(u=>u.id===it.id).length}</td></tr>`).join('')}</table></div>
+  const left=marketLeft();
+  return `<div class="shop"><div class="keeper parch"><img src="art/shopkeeper.webp" alt=""><div class="say">“Stock turns over and the stall stays small. The halls still have the real prizes. ${S.buildings.market<3?'Upgrade my stall and I\'ll stock more.':''}”</div></div>
+    <div class="parch card"><div class="small">Rotating stall · ${items.length} of ${marketSlots()} slots · next change in <b>${fmtTime(marketLeft())}</b></div>
+    <table class="slist"><tr><th>Item</th><th>Price</th><th>Owned</th></tr>${items.map(it=>`<tr class="${it.id===UI.shopSel?'sel':''}" data-a="shopSel" data-id="${it.id}"><td>${it.icon} ${esc(it.name)}</td><td class="${S.gold<buyPrice(it)?'short':''}">🪙${buyPrice(it)}</td><td>${S.inv.filter(u=>u.id===it.id).length}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nothing on the stall right now.</td></tr>'}</table></div>
     ${sel?`<div class="parch card tip"><h3>${sel.icon} ${esc(sel.name)} <small>${D.SLOT_NAMES[sel.slot]} · Common</small></h3><div class="small">${statLine(sel.stats)}</div><div class="small">Teaches: ${sel.skills.map(s=>`<b>${skillName(s)}</b> <span class="muted">(${D.SKILLS[s].ap} AP)</span>`).join(', ')}</div>
       <div class="cmp">${S.chars.map((c,ci)=>`<div class="cmpc">${portrait(c,ci)}<b>${esc(c.name)}</b><div class="small">${compareFor(c, sel, 0)}</div><div class="small">${sel.skills.filter(s=>!c.learned[s]).length?'<span class="ok">new skills</span>':'<span class="muted">knows these</span>'}</div></div>`).join('')}</div>
       <button class="btn go" data-a="buy" data-id="${sel.id}" ${S.gold>=buyPrice(sel)?'':'disabled'}>Buy · 🪙${buyPrice(sel)}</button></div>`:''}</div>`; }
 function placeTavern(){ const S=G.S; const L=S.buildings.tavern;
-  return `<div class="parch card"><h3>🍲 Larder</h3><p class="small">A Cooking worker cooks the best recipe you have ingredients for. The party eats the best meal in the larder each time it sets out; the buff lasts that whole expedition.</p>
+  return `<div class="parch card"><h3>🍲 Larder</h3><p class="small">A Cooking worker cooks the best recipe you have ingredients for. When the party sets out it eats one of each packed dish, and the buffs stack, so a later recipe never replaces an earlier one.</p>
     <div class="chips">${D.FOODS.filter(f=>S.meals[f.id]).map(f=>`<span class="chip">${f.icon} ${esc(f.name)} ×${S.meals[f.id]}</span>`).join('')||'<span class="muted small">Empty.</span>'}</div>
     <p class="small">${S.workers.cooking?`🧑‍🍳 Cooking: ${esc(profPerkText('cooking'))}`:'<span class="short">No Cooking worker — assign one at the 🏛️ Town Hall.</span>'}</p></div>
     <div class="parch card"><h3>Recipes</h3>${D.FOODS.map(f=>{ const ok=f.tav<=L && f.cook<=S.profs.cooking.lv;
       return `<div class="srow ${ok?'':'dim'}"><span>${f.icon} <b>${esc(f.name)}</b> <small>${esc(f.desc)}</small></span><span class="chips">${Object.entries(f.mats).map(([m,n])=>matChip(m,n)).join('')}</span>${ok?'':`<small class="muted">Tavern Lv ${f.tav} · Cooking Lv ${f.cook}</small>`}</div>`; }).join('')}</div>`; }
 function placeLibrary(){ const S=G.S; const L=S.buildings.library;
-  return `<div class="parch card"><h3>📚 The bestiary</h3><p class="small">Every kill teaches the scholars about a foe. Each tier weakens that foe for good. Library level ${L} unlocks up to tier <b>${D.BEAST_TIERS.reduce((a,t,i)=>t.lib<=L?i:a,0)}</b>.</p>
-    <table class="rates"><tr><th>Tier</th><th>Kills</th><th>Library</th><th>Effect</th></tr>${D.BEAST_TIERS.slice(1).map((t,i)=>`<tr class="${t.lib<=L?'':'dim'}"><td>${i+1}</td><td>${t.kills}</td><td>Lv ${t.lib}</td><td class="small">${esc(t.label.split('— ')[1]||t.label)}${t.dia?` · +${t.dia}💎`:''}</td></tr>`).join('')}</table>
+  return `<div class="parch card"><h3>📚 The bestiary</h3><p class="small">Combat kills teach the scholars about a foe. The Library never adds kills; each level lowers the kills needed for every bonus (now about ${Math.round((D.LIB_KILL_REDUCE||0.07)*L*100)}% fewer, min 50% of the listed count). Scholarship research also lowers the need for seen, non-boss foes.</p>
+    <table class="rates"><tr><th>Tier</th><th>Listed</th><th>Needed now</th><th>Effect</th></tr>${D.BEAST_TIERS.slice(1).map((t,i)=>`<tr><td>${i+1}</td><td>${t.kills}</td><td>${killsNeeded(i+1)}</td><td class="small">${esc(t.label.split('— ')[1]||t.label)}${t.dia?` · +${t.dia}💎`:''}</td></tr>`).join('')}</table>
     <p class="small">Complete a zone's collection — every foe Mastered, every rare <b>Gilded</b> variant defeated, and the boss beaten — and the Library awards that zone's relic.</p>
     <button class="btn" data-a="codexGo" data-k="bestiary">Open the bestiary</button></div>`; }
 
@@ -214,7 +248,8 @@ function zoneCard(i){ const S=G.S, Z=D.ZONES[i], st=S.zones[i], open=zoneOpen(i)
   const dep=canDepart();
   return `<div class="parch card zc"><div class="zh"><h3>${esc(Z.name)}</h3><span class="chip">Lv ${Z.lv}</span></div><p class="small">${esc(Z.desc)}</p>
     <div class="zfoes">${foes}<button class="zf boss" data-a="beast" data-e="${Z.boss.id}"><img src="${enemyImg(Z.boss.id)}" alt="" class="${st.bossKills?'':'unseen'}"><span>${st.bossKills?esc(Z.boss.name):'Boss'}</span><small>${st.boss?'defeated ✓':'guards the road'}</small></button></div>
-    ${!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone', `Battles won ${Math.min(st.wins,Z.wins)}/${Z.wins} — then the boss appears`):`<div class="small ok">Boss defeated. It returns after ${40} more wins here (${st.sinceBoss}/40) for another try.</div>`}
+    ${(()=>{ const n=D.STAGES||10, cur=zoneStage(i), rem=D.BOSS_REMATCH||20; const stageBar=`<div class="stages">${Array.from({length:n},(_,s)=>`<i class="stg ${s<cur?'got':s===cur?'now':''}" title="Stage ${s+1}"></i>`).join('')}<span class="small">Stage ${cur}/${n}</span></div>`;
+      return (!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone', `Battles won ${Math.min(st.wins,Z.wins)}/${Z.wins} — then the boss appears`)+stageBar:`<div class="small ok">Boss defeated. It returns after ${rem} more wins here (${st.sinceBoss}/${rem}), and may appear on its own before then.</div>`+stageBar); })()}
     <div class="small">Collection: ${col.foes.filter(f=>f.t>=3).length}/${col.foes.length} Mastered · ${col.foes.filter(f=>f.gilded).length}/${col.foes.length} Gilded seen · boss ${col.boss?'✓':'✗'} → ${col.relic?`${col.relic.icon} ${esc(col.relic.name)} ${col.got?'<b class="ok">claimed</b>':''}`:'—'}</div>
     <div class="row gap">${S.loc==='town'?`<button class="btn go grow" data-a="depart" data-z="${i}" ${dep.ok?'':'disabled'}>🔥 Set out</button>${ready?`<button class="btn boss" data-a="departBoss" data-z="${i}" ${dep.ok&&S.chars.every(c=>c.stam>=D.STAM.boss)?'':'disabled'}>👑 Face ${esc(Z.boss.name)}</button>`:''}`
       : here ? `<button class="btn go grow" data-a="tab" data-t="camp">⚔️ Watch the battle</button>${ready?`<button class="btn boss" data-a="boss" data-z="${i}">👑 Boss next</button>`:''}` : `<span class="small muted">The party is out in ${esc(D.ZONES[S.zone].name)}.</span>`}</div>
@@ -227,6 +262,7 @@ function viewCamp(){ const S=G.S; if(S.loc==='exp') return null; // battle is dr
   const opts=S.chars.map((c,ci)=>{ const ms=D.MENTORS.filter(m=>mentorAvailable(m.id)&&mentorRank(c,m.id)<D.MENTOR_MAX);
     return `<div class="campc parch">${portrait(c,ci)}<div class="grow"><b>${esc(c.name)}</b> <small>Lv ${c.lv} ${D.RACES[c.race].name}${c.job?' · '+D.JOBS[c.job].icon+' '+D.JOBS[c.job].name:''}</small>
       ${bar(c.stam, maxStam(c), 'stam', `Stamina ${Math.floor(c.stam)}/${maxStam(c)}${c.stam<maxStam(c)?' · full in '+fmtTime((maxStam(c)-c.stam)*stamRegenSec(c)/(c.act==='rest'?D.STAM.restMult:1)):''}`)}
+      ${c.act && c.act.startsWith('m:') ? (()=>{ const mid=c.act.slice(2), st=c.mentors[mid]||{rank:0,xp:0}, need=mentorNeed(st.rank), m=D.MENTOR[mid]; return st.rank>=D.MENTOR_MAX?`<div class="small ok">Mentoring ${esc(m.name)}: mastered</div>`:bar(st.xp, need, 'xp', `Mentoring ${esc(m.name)} · rank ${st.rank} · ${fmtTime(need-st.xp)} to rank ${st.rank+1}`); })() : ''}
       <div class="acts"><button class="btn sm ${c.act==='rest'?'on':''}" data-a="act" data-i="${ci}" data-v="rest">😴 Rest</button><button class="btn sm ${c.act==='train'?'on':''}" data-a="act" data-i="${ci}" data-v="train" ${c.endLv>=enduranceCap()?'disabled':''}>🎯 Train</button>
         <select data-sel="act" data-i="${ci}" aria-label="Mentor"><option value="">🎓 Mentor…</option>${ms.map(m=>`<option value="m:${m.id}" ${c.act==='m:'+m.id?'selected':''}>${esc(m.name)} (${D.JOBS[m.job].name}) r${mentorRank(c,m.id)}</option>`).join('')}</select></div>
       <div class="small muted">${actName(c.act)}</div></div></div>`; }).join('');
@@ -235,7 +271,7 @@ function viewCamp(){ const S=G.S; if(S.loc==='exp') return null; // battle is dr
     ${le?`<div class="parch card small">Last expedition — ${esc(D.ZONES[le.zi].name)}: ${le.wins||0} wins, +${le.gold||0} gold, +${le.xp||0} XP. ${le.reason==='wipe'?'The party fell and was carried home.':le.reason==='tired'?'Came home when stamina ran out.':'Came home early.'}</div>`:''}
     ${opts}
     <div class="parch card"><div class="row gap wrap"><label class="small">Destination <select data-sel="zone">${D.ZONES.map((z,i)=>zoneOpen(i)?`<option value="${i}" ${i===zi?'selected':''}>${i+1}. ${esc(z.name)} (Lv ${z.lv})</option>`:'').join('')}</select></label>
-      <span class="small">${meal?`Packed meal: ${meal.icon} ${esc(meal.name)} (${esc(meal.desc)})`:'No meal packed (Tavern).'}</span></div>
+      <span class="small">${(()=>{ const packed=D.FOODS.filter(f=>(S.meals[f.id]||0)>0); return packed.length? 'Packed meals (one of each will be eaten): '+packed.map(f=>`${f.icon} ${esc(f.name)} ×${S.meals[f.id]}`).join(', '):'No meals packed (Tavern).'; })()}</span></div>
       <div class="row gap"><button class="btn go big grow" data-a="depart" data-z="${zi}" ${dep.ok?'':'disabled'}>Set out for ${esc(Z.name)}</button>${bossReady(zi)&&!S.zones[zi].boss?`<button class="btn boss" data-a="departBoss" data-z="${zi}" ${dep.ok&&S.chars.every(c=>c.stam>=D.STAM.boss)?'':'disabled'}>👑 Boss</button>`:''}</div>
       ${dep.ok?`<p class="small muted">Each battle costs 1 stamina. With ${Math.floor(partyStam())} stamina the party can fight about ${Math.floor(partyStam())} battles (~${fmtTime(Math.floor(partyStam())*40)}).</p>`:`<p class="small short">${esc(dep.why)}.</p>`}</div></div>`; }
 function battleSkeleton(){
@@ -306,18 +342,20 @@ function heroSkills(c, ci){ const ss=skillSet(c); const groups={};
   return `<div class="wood panel"><div class="ph"><h3>Skills</h3><span class="small">${learnedN} mastered</span></div><p class="small pd">Wear gear to learn its skills: each win gives AP. At full AP the skill is mastered for good, even without the gear.</p>
     ${Object.entries(groups).map(([t,ids])=>{ const T=D.TYPES[t]||{name:t,icon:'•'}; const open=UI.open['sk_'+t]!==false; const have=ids.filter(id=>c.learned[id]).length;
       return `<div class="cat"><button class="cath" data-a="toggle" data-k="sk_${t}"><span>${T.icon} ${T.name}</span><small>${have}/${ids.length}</small><i>${open?'▾':'▸'}</i></button>${open?`<div class="sklist">${ids.map(sid=>{ const s=D.SKILLS[sid]; const ap=c.ap[sid]||0, L=!!c.learned[sid], src=ss[sid];
-        return `<div class="skrow ${L?'done':src?'act':'dim'}"><div class="tile">${(D.TYPES[s.type]||{}).icon||'✦'}</div><div class="grow"><div class="sn"><b>${esc(s.name)}</b> <small>${s.kind==='passive'?'passive':s.mp?s.mp+' MP':''}</small>${src&&src!=='learned'?` <span class="tag">${src==='gear'?'from gear':src==='lock'?'🔒 locked in':src==='sub'?'subjob':'job'}</span>`:''}</div>
-          <div class="small">${esc(s.desc)}</div>${s.ap?(L?'<div class="small ok">Mastered ✓</div>':bar(ap, s.ap, 'ap', `${ap}/${s.ap} AP${src==='gear'?'':' — '+skillSourceText(sid)}`)):''}</div></div>`; }).join('')}</div>`:''}</div>`; }).join('')}</div>`; }
-function gridPos(n){ if(n.core) return [0,0]; const i=+n.id.split('.')[1], b=n.branch; const r=58+i*44; const a=(-90+b*120+(i-2.5)*7)*Math.PI/180; return [Math.cos(a)*r, Math.sin(a)*r, r, a]; }
+        const off=!!(c.skillOff&&c.skillOff[sid]); const canToggle=s.kind==='active' && !!src;
+        return `<div class="skrow ${L?'done':src?'act':'dim'} ${off?'off':''}"><div class="tile">${(D.TYPES[s.type]||{}).icon||'✦'}</div><div class="grow"><div class="sn"><b>${esc(s.name)}</b> <small>${s.kind==='passive'?'passive':s.mp?s.mp+' MP':''}</small>${src&&src!=='learned'?` <span class="tag">${src==='gear'?'from gear':src==='lock'?'🔒 locked in':src==='sub'?'subjob':src==='mentor'?'mentor':'job'}</span>`:''}</div>
+          <div class="small">${esc(s.desc)}</div>${s.ap?(L?'<div class="small ok">Mastered ✓</div>':bar(ap, s.ap, 'ap', `${ap}/${s.ap} AP${src==='gear'?'':' — '+skillSourceText(sid)}`)):''}</div>
+          ${canToggle?`<button class="btn sm ${off?'':'on'}" data-a="togSkill" data-i="${ci}" data-sid="${sid}">${off?'Off':'On'}</button>`:''}</div>`; }).join('')}</div>`:''}</div>`; }).join('')}</div>`; }
+function gridPos(n, jid){ if(n.core) return [0,0]; const job=(jid&&D.JOBS[jid])||D.JOBS[UI.jobView]||D.JOBS.knight; const nb=(job.branches&&job.branches.length)||3; const i=+n.id.split('.')[1], b=n.branch; const r=58+i*44; const a=(-90+b*(360/nb)+(i-2.5)*5)*Math.PI/180; return [Math.cos(a)*r, Math.sin(a)*r, r, a]; }
 function gridSvg(c, jid){ const j=D.JOBS[jid], jt=c.jobs[jid]||{nodes:{}};
   let lines='', nodes=''; const seen=new Set();
-  for(const n of j.nodes) for(const l of n.links){ const k=[n.id,l].sort().join('-'); if(seen.has(k)) continue; seen.add(k); const m=j.node[l]; const p1=gridPos(n), p2=gridPos(m); const lit=jt.nodes[n.id]&&jt.nodes[l];
+  for(const n of j.nodes) for(const l of n.links){ const k=[n.id,l].sort().join('-'); if(seen.has(k)) continue; seen.add(k); const m=j.node[l]; const p1=gridPos(n,jid), p2=gridPos(m,jid); const lit=jt.nodes[n.id]&&jt.nodes[l];
     if(!n.core && !m.core && n.branch!==m.branch){ const r=(p1[2]+p2[2])/2; const sw=(p1[0]*p2[1]-p1[1]*p2[0])>0?1:0; lines+=`<path d="M${p1[0].toFixed(1)},${p1[1].toFixed(1)} A${r},${r} 0 0 ${sw} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}" class="${lit?'lit':''}"/>`; }
     else lines+=`<line x1="${p1[0].toFixed(1)}" y1="${p1[1].toFixed(1)}" x2="${p2[0].toFixed(1)}" y2="${p2[1].toFixed(1)}" class="${lit?'lit':''}"/>`; }
-  for(const n of j.nodes){ const [x,y]=gridPos(n); const own=!!jt.nodes[n.id]; const av=!own && nodeAvailable(c,jid,n).ok; const locked=c.locks[jid]===n.id; const r=n.core?20:n.ability?15:10;
+  for(const n of j.nodes){ const [x,y]=gridPos(n,jid); const own=!!jt.nodes[n.id]; const av=!own && nodeAvailable(c,jid,n).ok; const locked=c.locks[jid]===n.id; const r=n.core?20:n.ability?15:10;
     const col=n.core||n.ability?'#f2cc8f':({hp:'#6fcf73',mp:'#5aa9e6',str:'#e07a5f',def:'#d9b23a',mag:'#c08ee0',agi:'#7ad1c4'}[n.stat]||'#ccc');
     nodes+=`<g class="node ${own?'own':''} ${av?'av':''} ${UI.node===n.id?'sel':''} ${locked?'locked':''} ${n.ability?'abil':''}" data-a="node" data-n="${n.id}" transform="translate(${x.toFixed(1)},${y.toFixed(1)})"><circle r="${r+9}" class="halo"/><circle r="${r}" fill="${col}" class="orb"/>${n.ability?`<text y="5" class="glyph">${locked?'🔒':'★'}</text>`:''}${n.core?`<text y="7" class="glyph core">${j.icon}</text>`:''}${!n.ability&&!n.core?`<text y="4" class="sl">${D.STAT_NAMES[n.stat][0]}</text>`:''}</g>`; }
-  const labels=j.branches.map(([bn],b)=>{ const p=gridPos(j.node[b+'.5']); const x=Math.max(-250,Math.min(250,p[0]*1.12)), y=p[1]*1.12+(b===0?-6:28); return `<text class="bl" x="${x.toFixed(0)}" y="${y.toFixed(0)}">${esc(bn)}</text>`; }).join('');
+  const labels=j.branches.map(([bn],b)=>{ const p=gridPos(j.node[b+'.5'],jid); const x=Math.max(-250,Math.min(250,p[0]*1.12)), y=p[1]*1.12+(b===0?-6:28); return `<text class="bl" x="${x.toFixed(0)}" y="${y.toFixed(0)}">${esc(bn)}</text>`; }).join('');
   return `<svg class="sgrid" viewBox="-320 -330 640 610" role="img" aria-label="${j.name} grid"><defs><radialGradient id="glow"><stop offset="0" stop-color="#9fd3ff" stop-opacity=".6"/><stop offset="1" stop-color="#9fd3ff" stop-opacity="0"/></radialGradient></defs>${lines}${nodes}${labels}</svg>`; }
 function heroJob(c, ci){ const S=G.S; const jid=UI.jobView&&D.JOBS[UI.jobView]?UI.jobView:(c.job||D.JOB_ORDER.find(j=>jobUnlocked(c,j))||'knight'); UI.jobView=jid; const j=D.JOBS[jid], jt=c.jobs[jid];
   const list=D.JOB_ORDER.map(k=>{ const J=D.JOBS[k]; const un=jobUnlocked(c,k), sub=subjobOk(c,k); const pr=jobProgress(c,k);
@@ -334,7 +372,7 @@ function heroJob(c, ci){ const S=G.S; const jid=UI.jobView&&D.JOBS[UI.jobView]?U
     <div class="sphere"><div class="sg-corner">${portrait(c,ci)}<div><b>${esc(c.name)}</b><small>${j.icon} ${j.name}</small><small>JP <b>${jt?jt.jp||0:0}</b></small></div></div>${gridSvg(c,jid)}${info}</div>
     <div class="parch card"><div class="row gap wrap">${c.job===jid?`<span class="chip ok">Main job</span>`:jobUnlocked(c,jid)?`<button class="btn go" data-a="setJob" data-j="${jid}">Make ${j.name} the main job</button>`:`<span class="small short">Locked: needs ${esc(why)}</span>`}
       ${c.sub===jid?`<button class="btn" data-a="setSub" data-j="">Remove subjob</button>`:subjobOk(c,jid)?`<button class="btn" data-a="setSub" data-j="${jid}">Set as subjob</button>`:c.job!==jid?`<span class="small muted">Subjob: study with ${D.MENTORS.filter(m=>m.job===jid).map(m=>esc(m.name)).join(' or ')}</span>`:''}</div>
-      <p class="small">${esc(j.desc)} Command: <b>${skillName(j.cmd)}</b>. Main job: full stats, earns JP (1 per win, 5 per boss) and its unlocked nodes apply. Subjob: half its stats, its command and granted skills.</p>
+      <p class="small">${esc(j.desc)} Command: <b>${skillName(j.cmd)}</b>. Main job: full stats, earns JP (1 per win, 5 per boss) and its unlocked nodes apply. Subjob: half its stats, its command, and every unlocked skill or passive on that job (not the raw stat nodes).</p>
       <div class="lockbox"><h3>🔒 Lock-in for ${j.name}</h3><p class="small">Pick ONE unlocked ability from this grid. It stays active when ${esc(c.name)} switches to another job.</p>
       ${lockN?`<div class="locked-pick">🔒 <b>${esc(lockN.name)}</b> — ${esc(lockN.desc)} ${c.job===jid?'<small class="muted">(active now as part of the main job; kept after switching)</small>':'<small class="ok">active now via lock-in</small>'}</div>`:`<div class="small muted">${lockable(c,jid).length?'Tap a ★ ability node you own, then “Lock in”.':'No ability unlocked yet in this grid.'}</div>`}</div>
       ${Object.keys(c.locks).length?`<div class="small">All lock-ins: ${Object.entries(c.locks).map(([k,nid])=>`${D.JOBS[k].icon} ${esc(D.JOBS[k].node[nid].name)}`).join(' · ')}</div>`:''}</div>`; }
@@ -342,22 +380,24 @@ function heroGear(c, ci){ const S=G.S;
   return D.SLOTS.map(slot=>{ const uid=c.equip[slot]; const u=uid!=null?invItem(uid):null; const open=UI.gearSlot===slot;
     const cands=S.inv.filter(x=>defOf(x).slot===slot && x.uid!==uid && equippedBy(x.uid)<0);
     return `<div class="parch card gslot"><div class="row"><b class="grow">${D.SLOT_NAMES[slot]}</b>${u?rname(u):'<span class="muted">empty</span>'}</div>
-      ${u?`<div class="small">${statLine(defOf(u).stats)} · teaches ${defOf(u).skills.map(s=>`${skillName(s)} ${c.learned[s]?'✓':`<small>${c.ap[s]||0}/${D.SKILLS[s].ap}</small>`}`).join(', ')}</div>`:''}
+      ${u?`<div class="small">${statLine(defOf(u).stats)}${defOf(u).bonus?` · worn ${Object.entries(defOf(u).bonus).map(([k,v])=>typeof v==='number'?(v<1&&v>-1?`+${Math.round(v*100)}% ${k}`:`+${v} ${k}`):'').filter(Boolean).join(', ')}`:''} · teaches ${defOf(u).skills.map(s=>`${skillName(s)} ${c.learned[s]?'✓':`<small>${c.ap[s]||0}/${D.SKILLS[s].ap}</small>`}`).join(', ')}</div>`:''}
       <div class="row gap">${cands.length?`<button class="btn sm" data-a="gslot" data-s="${slot}">${open?'Close':'Change ('+cands.length+')'}</button>`:`<span class="small muted">${slot==='relic'?'Relics come from completing a zone collection (Library).':'Get more from the gear halls, the Market or the Forge.'}</span>`}${u?`<button class="btn sm" data-a="unequip" data-s="${slot}">Remove</button>`:''}</div>
       ${open?`<div class="cands">${cands.map(x=>{ const it=defOf(x); const nw=it.skills.filter(s=>!c.learned[s]).length;
-        return `<div class="srow"><span class="grow">${rname(x)}<div class="small">${slot==='relic'?statLine(it.stats):compareFor(c, D.ITEM[x.id], x.r)}${nw?' · <span class="ok">'+nw+' new skill'+(nw>1?'s':'')+'</span>':''}</div></span><button class="btn sm go" data-a="equip" data-uid="${x.uid}">Equip</button></div>`; }).join('')}</div>`:''}</div>`; }).join(''); }
+        return `<div class="srow"><span class="grow">${rname(x)}<div class="small">${slot==='relic'?statLine(it.stats):compareFor(c, D.ITEM[x.id], x.r)}${nw?' · <span class="ok">'+nw+' new skill'+(nw>1?'s':'')+'</span>':''}</div></span><button class="btn sm go" data-a="equip" data-uid="${x.uid}">Equip</button></div>`; }).join('')}</div>`:''}</div>`; }).join('') + `<div class="parch card bag"><div class="row gap wrap"><h3 class="grow">Inventory</h3><label class="small">Sort <select data-sel="bagSort">${[['rarity','Rarity'],['tier','Tier'],['slot','Slot'],['name','Name']].map(([k,l])=>`<option value="${k}" ${(G.S.bagSort||'rarity')===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
+      <div class="baglist">${(sortInv(G.S.bagSort||'rarity'), G.S.inv).map(u=>{ const it=defOf(u); const who=equippedBy(u.uid); return `<div class="srow">${rname(u)} <small>T${it.tier||0} · ${D.SLOT_NAMES[it.slot]||it.slot}${who>=0?' · on '+esc(G.S.chars[who].name):''}${it.bonus?' · worn bonus':''}</small></div>`; }).join('')||'<div class="muted small">Empty.</div>'}</div></div>`; }
 
 /* ---------------- CODEX ---------------- */
 const CODEX=[['bestiary','🐾 Bestiary'],['relics','💠 Relics'],['mats','🧱 Materials'],['save','💾 Save'],['help','❓ Guide'],['settings','⚙️ Settings']];
 function viewCodex(){ const v=UI.codex; let h=`<div class="stabs">${CODEX.map(([k,n])=>`<button class="stab ${v===k?'on':''}" data-a="cview" data-v="${k}">${n}</button>`).join('')}</div>`;
   h += v==='relics'?codexRelics() : v==='mats'?codexMats() : v==='help'?helpHtml() : v==='settings'?settingsHtml() : v==='save'?saveHtml() : codexBestiary(); return h; }
 function codexBestiary(){ const S=G.S; const L=S.buildings.library;
-  return `<p class="small pdesc">Kills teach the Library about each foe. Tiers weaken that foe for good (Library Lv ${L} unlocks up to tier ${D.BEAST_TIERS.reduce((a,t,i)=>t.lib<=L?i:a,0)}). Rare ✨ Gilded variants appear 1 in ${Math.round(1/D.VARIANT_CHANCE)} fights. Complete a zone's collection for its relic.</p>` +
+  return `<p class="small pdesc">Combat kills teach the Library about each foe. The Library never adds kills — it (and scholarship research) lower the number needed for the next bonus. Tiers weaken that foe for good. Rare ✨ Gilded variants appear 1 in ${Math.round(1/D.VARIANT_CHANCE)} fights. Complete a zone's collection for its relic.</p>` +
   D.ZONES.map((Z,zi)=>{ if(!zoneOpen(zi) && !S.zones[zi].wins) return `<div class="parch card dim"><h3>🔒 ${esc(Z.name)}</h3></div>`; const col=zoneCollection(zi);
     return `<div class="parch card"><div class="zh"><h3>${esc(Z.name)}</h3>${col.relic?`<span class="chip ${col.got?'ok':''}">${col.relic.icon} ${esc(col.relic.name)} ${col.got?'✓':''}</span>`:''}</div>
       <div class="beasts">${col.foes.map(f=>{ const k=f.k, t=f.t, T=D.BEAST_TIERS[t], nx=D.BEAST_TIERS[t+1]; const seen=k>0;
-        return `<button class="beast ${seen?'':'unseen'}" data-a="beast" data-e="${f.e.id}"><img src="${enemyImg(f.e.id)}" alt=""><b>${seen?esc(f.e.name):'???'}</b><small>${k} kills · ${T.label.split(' —')[0]}${f.gilded?' · ✨':''}</small>${nx?bar(k, nx.kills, 'xp thin', `${k}/${nx.kills}`):'<small class="ok">complete</small>'}</button>`; }).join('')}
-      <button class="beast boss ${S.zones[zi].bossKills?'':'unseen'}" data-a="beast" data-e="${Z.boss.id}"><img src="${enemyImg(Z.boss.id)}" alt=""><b>${S.zones[zi].bossKills?esc(Z.boss.name):'Boss'}</b><small>${S.zones[zi].bossKills} defeats</small></button></div>
+        const need=nx?beastNeed(f.e.id, t+1):0; const xp=S.beastXp[f.e.id]||0, gold=S.beastGold[f.e.id]||0;
+        return `<button class="beast ${seen?'':'unseen'}" data-a="beast" data-e="${f.e.id}"><img src="${enemyImg(f.e.id)}" alt=""><b>${seen?esc(f.e.name):'???'}</b><small>${k} kills · ${T.label.split(' —')[0]}${f.gilded?' · ✨':''}</small>${seen?`<small>✨ ${xp} XP · 🪙 ${gold} gold earned</small>`:''}${nx?bar(k, need, 'xp thin', `${k}/${need}`):'<small class="ok">complete</small>'}</button>`; }).join('')}
+      <button class="beast boss ${S.zones[zi].bossKills?'':'unseen'}" data-a="beast" data-e="${Z.boss.id}"><img src="${enemyImg(Z.boss.id)}" alt=""><b>${S.zones[zi].bossKills?esc(Z.boss.name):'Boss'}</b><small>${S.zones[zi].bossKills} defeats${S.beastXp[Z.boss.id]?` · ✨ ${S.beastXp[Z.boss.id]} XP · 🪙 ${S.beastGold[Z.boss.id]||0} gold`:''}</small></button></div>
       <div class="small">Collection: ${col.foes.filter(f=>f.t>=3).length}/${col.foes.length} Mastered · ${col.foes.filter(f=>f.gilded).length}/${col.foes.length} Gilded · boss ${col.boss?'✓':'✗'}</div></div>`; }).join(''); }
 function findEnemy(id){ for(const [zi,Z] of D.ZONES.entries()){ const e=Z.enemies.find(x=>x.id===id); if(e) return {e, zi}; if(Z.boss.id===id) return {e:Z.boss, zi}; } return null; }
 function codexRelics(){ const S=G.S; return `<p class="small pdesc">Relics are never dropped. Each one is the Library's reward for completing a zone's collection. Each houses a vital skill (${D.SKILLS[D.RELICS[0].skill].ap} AP).</p>`+D.RELICS.map(r=>{ const got=S.relicsFound[r.id];
@@ -373,8 +413,8 @@ function helpHtml(){ return `<div class="parch card help"><h3>How Lanternfall pl
   <p><b>🏘️ Town work gives items:</b> one worker at the start (hire more with gold at the 🏛️ Town Hall). Mining digs stone, gems and slow 💎 Diamonds. Smithing forges the odd Common piece. Cooking makes meals eaten when you set out.</p>
   <p><b>💎 Gear halls</b> (Forge, Chapel, Arcanum, Thieves' Den, Lodge) are the main source of gear. Every piece teaches skills; wear it and win to master them.</p>
   <p><b>🧭 Jobs.</b> A base job opens after one learned skill of its type. Each job has a sphere grid paid for with JP. Lock in ONE ability per job to keep it after switching.</p>
-  <p><b>🎓 Mentors.</b> Heroes in town can study with a mentor: a growing bonus, a smaller minus, and that mentor's job as a subjob. Rank 3 with an advanced-job mentor opens that job.</p>
-  <p><b>📚 Bestiary.</b> Kill counts weaken foes (with the Library). Master every foe in a zone, beat its Gilded variants and the boss to earn that zone's relic.</p></div>`; }
+  <p><b>🎓 Mentors.</b> Heroes in town can study with a mentor. Every rank gives a visible stat change. Rank 1 unlocks that mentor's job as a main job; rank 3 unlocks it as a sub job (which uses every unlocked skill and passive on that job). Ranks 5, 7 and 10 grant a gift only that mentor can give.</p>
+  <p><b>📚 Bestiary.</b> Combat kill counts weaken foes. The Library and scholarship research lower the kills needed; they never add kills. Master every foe in a zone, beat its Gilded variants and the boss to earn that zone's relic.</p></div>`; }
 function settingsHtml(){ const S=G.S; return `<div class="parch card"><h3>⚙️ Settings</h3><label class="tg"><input type="checkbox" data-set="autoBoss" ${S.settings.autoBoss?'checked':''}> <span><b>Auto-challenge bosses</b><br><small class="muted">Fight a zone's boss as soon as it appears (off = you choose).</small></span></label>
   <button class="btn sm" data-a="tutReset">Show the guide again</button></div>
   <div class="parch card"><h3>💾 Save</h3><p class="small muted">Save codes, backups and hard reset live on the Save page.</p><button class="btn sm" data-a="codexGo" data-k="save">Open 💾 Save</button>
@@ -382,7 +422,7 @@ function settingsHtml(){ const S=G.S; return `<div class="parch card"><h3>⚙️
 
 /* ---------------- pulls ---------------- */
 function pullAnim(res, b){
-  const top=Math.max(...res.map(x=>x.r)); const B=D.BANNERS[b];
+  const top=Math.max(...res.map(x=>x.r)); const B=D.BANNERS[b]||{icon:'⭐',name:'Featured'};
   const cards=res.map((x,i)=>{ const it=D.ITEM[x.id]; const st=scaledStats(it.stats,x.r); return `<div class="pcard r${x.r}" style="animation-delay:${.9+i*.15}s"><div class="pci">${it.icon}</div><div class="pcn">${esc(it.name)}</div><div class="pcr">${D.RARITY[x.r].name}</div><div class="pcs">${statLine(st)}</div><div class="pck">${it.skills.map(s=>skillName(s)).join('<br>')}</div>${x.isNew?'<div class="pnew">NEW</div>':''}</div>`; }).join('');
   modal(`<div class="pullfx r${top}"><div class="orb">${B.icon}</div><div class="pcards n${res.length}">${cards}</div>
     <div class="pfoot" style="animation-delay:${1+res.length*.15}s"><button class="btn go" data-a="closeModal">Nice!</button><button class="btn sm" data-a="autoEquipClose">Equip new-skill gear</button></div></div>`, 'pullmodal'); }
@@ -482,6 +522,27 @@ const ACT = {
   pull(d){ const r=pull(d.b, +d.n); if(!r){ G.toast('Not enough 💎. Put a worker on Mining.','bad'); return; } save(); pullAnim(r, d.b); },
   autoEquipClose(){ closeModal(); const n=autoEquipLearn(); G.toast(n?`Equipped ${n} item${n>1?'s':''} with new skills.`:'Nothing new to equip.'); },
   fuse(d){ const nu=fuse(d.id, +d.r); if(nu) G.toast(`⚒️ Fused into ${D.RARITY[nu.r].name} ${D.ITEM[d.id].name}!`,'good'); },
+  togSkill(d){ toggleSkill(+d.i, d.sid); },
+  bagSort(d){ sortInv(d.k||d.v||G.S.bagSort); },
+  pullFeat(){ const r=pullFeatured(); if(!r){ G.toast((featuredItem().taken)?'Already claimed today.':'Not enough 💎.','bad'); return; } save(); pullAnim([r], 'hall'); },
+  drillStart(d){ const ci=+d.i; if(!canDrill(ci)){ G.toast('Focus Drill is cooling down.','bad'); return; }
+    const left=56+Math.random()*16, width=14; UI.drill={ci, left, width};
+    modal(`<h2>🎯 Focus Drill</h2><p class="small">Tap when the marker is in the green. A perfect hit grants a tiny permanent XP and gold bonus.</p>
+      <div class="drill-track"><div class="drill-green" style="left:${left}%;width:${width}%"></div><div class="drill-mark" id="drillMark"></div></div>
+      <button class="btn go big" data-a="drillTap">Tap!</button>`);
+    const mark=document.getElementById('drillMark');
+    if(mark) mark.addEventListener('animationend', ()=>{ if(UI.drill&&UI.drill.ci===ci){ applyDrill(ci,'miss'); UI.drill=null; closeModal(); G.toast('The moment passed.','bad'); renderAll(); } }); },
+  drillTap(){ const d=UI.drill; if(!d) return;
+    const mark=document.getElementById('drillMark'), green=document.querySelector('.drill-green');
+    let quality='miss';
+    if(mark&&green){ const m=mark.getBoundingClientRect(), g=green.getBoundingClientRect(); const cx=m.left+m.width/2;
+      if(cx>=g.left && cx<=g.right) quality='perfect'; else if(cx>=g.left-18 && cx<=g.right+18) quality='good'; }
+    applyDrill(d.ci, quality); UI.drill=null; closeModal();
+    const bonus=(((G.S.chars[d.ci].drill||{}).xp||0)*((D.DRILL&&D.DRILL.unit)||0.001)*100).toFixed(1);
+    G.toast(quality==='miss'?'Missed the window.':`🎯 ${quality==='perfect'?'Perfect':'Good'}! Permanent XP/gold is now +${bonus}%.`, quality==='miss'?'bad':'good'); },
+  bankDep(d){ const S=G.S; const n=d.n==='all'?S.gold:d.n==='half'?Math.floor(S.gold/2):(+d.n||0); if(!bankDeposit(n)) G.toast('Nothing to deposit.','bad'); else G.toast('Deposited '+n+' gold.','good'); },
+  bankWd(d){ const S=G.S; const n=d.n==='all'?Math.floor(S.bank.gold):d.n==='half'?Math.floor(S.bank.gold/2):(+d.n||0); if(!bankWithdraw(n)) G.toast('Nothing to withdraw.','bad'); else G.toast('Withdrew '+n+' gold.','good'); },
+  bankConv(d){ const n=+d.n||1; if(!bankConvert(n)) G.toast('Not enough interest yet.','bad'); else G.toast('Changed interest into '+n+' 💎.','good'); },
   shopSel(d){ UI.shopSel=d.id; },
   buy(d){ if(buyItem(d.id)) G.toast(`Bought ${D.ITEM[d.id].icon} ${D.ITEM[d.id].name}. Equip it in Party → Gear.`,'good'); else G.toast('Not enough gold.','bad'); },
   sell(d){ const g=sellItem(+d.uid); if(g) G.toast(`Sold for ${g} gold.`); },
@@ -497,9 +558,10 @@ const ACT = {
   equip(d){ equip(UI.sel, +d.uid); UI.gearSlot=null; },
   unequip(d){ unequip(UI.sel, d.s); },
   beast(d){ const f=findEnemy(d.e); if(!f) return; const {e, zi}=f; const k=G.S.bestiary[e.id]||0; const t=beastTier(e.id); const st=enemyStats(e, zi); const seen=k>0||(e.boss&&G.S.zones[zi].bossKills);
-    modal(`<div class="beastpop"><img src="${enemyImg(e.id)}" alt="" class="${seen?'':'unseen'}"><h2>${seen?esc(e.name):'???'}</h2><p class="small">${esc(D.ZONES[zi].name)}${e.boss?' · boss':''} · ${k} kills</p>
-      ${t>=1||e.boss&&seen?`<p>HP ${st.hp} · ATK ${st.atk} · DEF ${st.def} · AGI ${st.agi}</p>`:'<p class="muted small">Stats shown at tier 1 (10 kills, Library Lv 1).</p>'}${t>=2?`<p>Weak to ${D.ELEMENTS[e.weak]||'—'}</p>`:''}
-      <table class="rates">${D.BEAST_TIERS.slice(1).map((T,i)=>`<tr class="${t>i?'ok':''}"><td>${t>i?'✓':''}</td><td>${T.kills} kills</td><td>Library ${T.lib}</td><td class="small">${esc(T.label)}${T.dia?` · +${T.dia}💎`:''}</td></tr>`).join('')}</table>
+    const xp=G.S.beastXp[e.id]||0, gold=G.S.beastGold[e.id]||0;
+    modal(`<div class="beastpop"><img src="${enemyImg(e.id)}" alt="" class="${seen?'':'unseen'}"><h2>${seen?esc(e.name):'???'}</h2><p class="small">${esc(D.ZONES[zi].name)}${e.boss?' · boss':''} · ${k} combat kills${seen?` · ✨ ${xp} XP · 🪙 ${gold} gold earned`:''}</p>
+      ${t>=1||e.boss&&seen?`<p>HP ${st.hp} · ATK ${st.atk} · DEF ${st.def} · AGI ${st.agi} · ${st.xp} XP / ${st.gold} gold per fight</p>`:'<p class="muted small">Stats shown at tier 1 ('+beastNeed(e.id,1)+' kills needed).</p>'}${t>=2?`<p>Weak to ${D.ELEMENTS[e.weak]||'—'}</p>`:''}
+      <table class="rates">${D.BEAST_TIERS.slice(1).map((T,i)=>`<tr class="${t>i?'ok':''}"><td>${t>i?'✓':''}</td><td>${beastNeed(e.id,i+1)} kills needed</td><td class="small">${esc(T.label)}${T.dia?` · +${T.dia}💎`:''}</td></tr>`).join('')}</table>
       ${!e.boss?`<p class="small">✨ Gilded variant: ${G.S.variants[e.id]?'<b class="ok">defeated</b>':'not yet seen'} (×2 HP, ×3 XP and gold).</p>`:''}<button class="btn" data-a="closeModal">Close</button></div>`); },
   matInfo(d){ const m=d.m, M=D.MATS[m]; const src=matSources(m);
     modal(`<h2>${M.icon} ${esc(M.name)}</h2><p>You have <b>${G.S.mats[m]||0}</b>.</p><p class="muted">${esc(M.desc)}</p><h3>Where to get it</h3><ul>${src.map(s=>`<li>${esc(s.text)}</li>`).join('')||'<li>—</li>'}</ul><h3>Used for</h3><p>${matUses(m).map(esc).join(' · ')||'—'}</p><button class="btn" data-a="place" data-p="hall">🏛️ Assign a worker</button>`); },
@@ -535,7 +597,8 @@ document.addEventListener('click', e=>{
 document.addEventListener('change', e=>{ const el=e.target, ds=el.dataset||{};
   if(ds.set){ G.S.settings[ds.set]=el.checked; save(); }
   if(ds.sel==='act' && el.value){ if(!setAct(+ds.i, el.value)) G.toast('Not available.','bad'); save(); renderAll(); }
-  if(ds.sel==='zone'){ UI.mapSel=+el.value; renderAll(); } });
+  if(ds.sel==='zone'){ UI.mapSel=+el.value; renderAll(); }
+  if(ds.sel==='bagSort'){ sortInv(el.value); save(); renderAll(); } });
 $('#modal').addEventListener('click', e=>{ if(e.target.id==='modal') closeModal(); });
 document.addEventListener('pointerdown', ()=>{ UI.pointer=true; }, {passive:true});
 document.addEventListener('pointerup', ()=>{ setTimeout(()=>UI.pointer=false, 250); }, {passive:true});

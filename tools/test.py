@@ -141,7 +141,8 @@ with sync_playwright() as p:
         shot(pg, tag, '10-pull-x10')
         close_modal(pg, touch)
         # ---------- shop ----------
-        pg.evaluate("__G.S.gold+=300"); place(pg, 'market', touch)
+        pg.evaluate("__G.S.gold+=300; __G.S.market={at:Date.now(),list:['stick','charm']};")
+        place(pg, 'market', touch)
         tap(pg, '.slist tr[data-a=shopSel][data-id=charm]', 0, touch)
         rec(f'{tag} shop: price/owned columns, tooltip and party comparison', pg.locator('.slist th', has_text='Owned').count() == 1 and pg.locator('.tip .cmpc').count() == 3 and pg.locator('.keeper img').count() == 1)
         shot(pg, tag, '11-shop', True)
@@ -160,6 +161,63 @@ with sync_playwright() as p:
         tap(pg, '.skrow[data-a=matInfo]', 0, touch)
         rec(f'{tag} where-to-get sheet opens', pg.locator('#modal h3', has_text='Where to get it').count() == 1)
         close_modal(pg, touch)
+
+        # ---------- playtest pass: stages, skills, fuse, bank, masonry, study, cooking, gacha ----------
+        rec(f'{tag} save version is 4', S(pg, "S.v") == 4)
+        rec(f'{tag} fuse requires 10 copies; Mythic only at a maxed Forge', S(pg, "fuseNeed()===10 && fuseLimit()===Math.min(4,Math.floor(S.buildings.forge/2)) && (S.buildings.forge=8, fuseLimit()===5)"))
+        place(pg, 'market', touch)
+        rec(f'{tag} market shows few rotating slots', S(pg, "shopItems().length") <= 3 and 'Rotating stall' in pg.locator('.shop').inner_text())
+        pg.evaluate("(()=>{const c=S.chars[0]; c.learned=c.learned||{}; c.learned.entangle=1; c.skillOff={}; dirty();})()".replace('S.chars','__G.S.chars'))
+        nav(pg, 'party', touch); tap(pg, '[data-a=sel][data-i="0"]', 0, touch); tap(pg, '[data-a=htab][data-k=skills]', 0, touch)
+        rec(f'{tag} skills show an on/off toggle for auto-battle', pg.locator('[data-a=togSkill][data-sid=entangle]').count() == 1)
+        tap(pg, '[data-a=togSkill][data-sid=entangle]', 0, touch)
+        rec(f'{tag} toggling Entangle off removes it from auto-battle', S(pg, "!!S.chars[0].skillOff.entangle && !usableSkills(S.chars[0], calcBase(S.chars[0])).some(k=>k.id==='entangle')"))
+        # cooking: eat one of each
+        pg.evaluate("""(()=>{const S=__G.S; S.loc='town'; S.meals={}; D.FOODS.slice(0,2).forEach(f=>S.meals[f.id]=2); S.chars.forEach(c=>c.stam=maxStam(c)); depart(0,false);})()""")
+        rec(f'{tag} setting out eats one of each packed meal', S(pg, "S.foods.length===2 && D.FOODS.slice(0,2).every(f=>S.meals[f.id]===1)"))
+        pg.evaluate("goHome('manual')")
+        # scholarship must not inflate boss kills
+        st = S(pg, """(()=>{S.bestiary.king_slime=2; S.zones[0].bossKills=2; S.research={}; for(let i=0;i<40;i++) addKill('king_slime',1,true); addResearch('king_slime',10); addResearch('slime',5); return {k:S.bestiary.king_slime, r:S.research.king_slime||0, rs:S.research.slime||0};})()""")
+        rec(f'{tag} library/scholarship never inflate boss kill counts', st['k'] == 2 and st['r'] == 0 and st['rs'] == 5, st)
+        # masonry gate
+        st = S(pg, "({why:(S.buildings.training=2,S.profs.masonry.lv=1,S.gold=1e6,S.mats.stone=999,S.mats.timber=999,S.mats.copper=999,canBuild('training').why)})")
+        rec(f'{tag} Masonry is required to raise buildings past the first levels', 'Masonry' in (st.get('why') or ''), st)
+        # banker
+        place(pg, 'hall', touch)
+        if pg.locator('[data-a=ptab][data-k=bank]').count():
+            tap(pg, '[data-a=ptab][data-k=bank]', 0, touch)
+        rec(f'{tag} Town Hall has a Bank tab that can hold gold', pg.locator('.bank').count() == 1 or 'Town Bank' in pg.inner_text('body'))
+        pg.evaluate("__G.S.gold+=200; bankDeposit(100); tickBank(86400)")
+        rec(f'{tag} deposited gold earns slow interest', S(pg, "S.bank.gold>100 && S.bank.earned>0"))
+        # mentor every rank visible
+        st = S(pg, "({a:(()=>{const c=S.chars[0]; c.mentors.aldric={rank:1,xp:0}; dirty(); const p1=mentorEff(c).def; c.mentors.aldric.rank=2; dirty(); const p2=mentorEff(c).def; return [p1,p2]})()})")
+        rec(f'{tag} every mentor rank changes a visible stat', st['a'][1] > st['a'][0], st)
+        if tag == 'iphone':
+            # fresh screenshots requested for the playtest pass
+            pg.evaluate("__G.S.zones[0].wins=24; __G.S.chars[1].act='m:aldric'; (__G.S.chars[1].mentors.aldric||(__G.S.chars[1].mentors.aldric={rank:1,xp:200}))")
+            nav(pg, 'map', touch); pg.wait_for_timeout(200); shot(pg, tag, '20-stages', True)
+            nav(pg, 'camp', touch); pg.wait_for_timeout(200); shot(pg, tag, '21-campfire-mentor', True)
+            place(pg, 'training', touch); tap(pg, '[data-a=ptab][data-k=train]', 0, touch)
+            shot(pg, tag, '22-training-drill', True)
+            if pg.locator('[data-a=drillStart]').count():
+                tap(pg, '[data-a=drillStart]', 0, touch); pg.wait_for_timeout(400)
+                shot(pg, tag, '23-focus-drill-modal')
+                close_modal(pg, touch)
+            nav(pg, 'party', touch); tap(pg, '[data-a=htab][data-k=skills]', 0, touch)
+            shot(pg, tag, '24-skill-toggles', True)
+            pg.evaluate("(()=>{const S=__G.S; for(let i=0;i<3;i++) addItem('lucky_coin',5); S.bagSort='rarity'; sortInv('rarity');})()")
+            tap(pg, '[data-a=htab][data-k=gear]', 0, touch); pg.wait_for_timeout(200)
+            shot(pg, tag, '25-mythic-sorted-inventory', True)
+            place(pg, 'market', touch); shot(pg, tag, '26-market-rotation', True)
+            place(pg, 'hall', touch)
+            if pg.locator('[data-a=ptab][data-k=bank]').count(): tap(pg, '[data-a=ptab][data-k=bank]', 0, touch)
+            shot(pg, tag, '27-banker', True)
+            place(pg, 'training', touch)
+            if pg.locator('[data-a=ptab][data-k=mentors]').count(): tap(pg, '[data-a=ptab][data-k=mentors]', 0, touch)
+            shot(pg, tag, '28-mentor-ranks', True)
+            nav(pg, 'codex', touch); tap(pg, '[data-a=cview][data-v=bestiary]', 0, touch) if pg.locator('[data-a=cview][data-v=bestiary]').count() else None
+            shot(pg, tag, '29-bestiary-xp-gold', True)
+
         over = []
         for t in ['town', 'map', 'camp', 'party', 'codex']:
             nav(pg, t, touch)
@@ -193,7 +251,7 @@ with sync_playwright() as p:
         pg.evaluate("(()=>{__G.noSave=true;localStorage.setItem('lanternfall.save',JSON.stringify({v:2,started:true,chars:[{name:'Old'}]}))})()")
         pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
         st = S(pg, "({v:S.v,started:S.started,backup:!!localStorage.getItem('lanternfall.save.v2backup')})")
-        rec(f'{tag} old v1 save -> fresh start, backed up, one-time new-journey notice', st['v'] == 3 and not st['started'] and st['backup'] and pg.locator('#modal h2', has_text='new journey').count() == 1, st)
+        rec(f'{tag} old v1 save -> fresh start, backed up, one-time new-journey notice', st['v'] == 4 and not st['started'] and st['backup'] and pg.locator('#modal h2', has_text='new journey').count() == 1, st)
         close_modal(pg, touch)
         pg.evaluate(f"__G.noSave=false;importSave({code!r});__debug.render()"); pg.wait_for_timeout(300)
         # ---------- render guard ----------
