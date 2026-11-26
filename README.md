@@ -4,13 +4,13 @@ A slow, cozy idle RPG for a party of three. You start in a painted town, choose 
 
 **Play:** https://nptrulock.github.io/lanternfall/
 
-## How it plays (v2.1 playtest pass)
+## How it plays (v2.2)
 - **Three heroes, six races** (Human, Elf, Dwarf, Halfling, Orc, Beastkin). Each race gains more traits as it levels, including small XP, gold and stamina bonuses.
 - **Town first.** The game opens in Lanternfall. Nothing fights until you pick a zone on the 🗺️ Map or at the 🔥 campfire and **set out**.
 - **Slow, readable battles.** Auto-battle with about 1.2 s per action and several rounds per fight. Early numbers are single digits. Zones are still long: Meadow still takes 80 wins to the boss, sliced into stages 1–10 with a small reward at each stage.
 - **Stamina.** Every battle costs each hero 1 stamina (a boss costs 4). When anyone runs out, the party walks home and stops until you send it out again. Heroes in town can:
   - 😴 rest (stamina recovers twice as fast),
-  - 🎯 train Endurance at the Training Grounds (more max stamina and faster recovery) and play a short **Focus Drill** for a tiny permanent XP/gold bonus, or
+  - 🎯 train Endurance at the Training Grounds (more max stamina and faster recovery) and, while a hero is Training, play a short **Focus Drill** for a tiny permanent XP/gold bonus (the target moves around the track and later drills get faster and tighter), or
   - 🎓 study with a mentor. The campfire shows mentoring progress next to time-until-stamina-full.
 - **Skills** learned for auto-battle can be toggled on or off per skill (for example, leave Entangle off).
 - **Battles give** XP, gold, AP (skill learning), JP (job grid), zone progress and bestiary kills. **They never drop items or materials.**
@@ -21,20 +21,21 @@ A slow, cozy idle RPG for a party of three. You start in a painted town, choose 
 - **Gear halls (gacha) are the main source of gear.** There are five halls: Forge, Chapel, Arcanum, Thieves' Den and Hunter's Lodge. There are **8 tiers** of equipment and **six rarities**, including **Mythic** (8× a Common's stats).
   - One pull is 💎5; ten pulls are 💎45, with a Rare+ guaranteed.
   - Pity guarantees an Epic within 60 pulls and a Mythic within 180. A **daily featured** strong item can be claimed once a day.
+  - Equipment comes in **four bands** across the 8 tiers: Low (T0–T1, 1×), Mid (T2–T3, 2×), Top (T4–T5, 3×) and Exclusive (T6–T7, 5×). New gear is weighted toward Mid, Top and Exclusive. Each item teaches **one unique skill or passive** — no two pieces share a skill. Hall, market and forge pools include the expanded catalog.
   - The Market keeps a **small rotating stall** (not a full catalog). The Forge fuses **10** duplicates into the next rarity (Mythic only at a maxed Forge). Inventory can be sorted by rarity, tier, slot or name.
 - **Jobs.**
   - A base job opens after one learned skill of its type, or after rank 1 with that job's mentor. Advanced jobs need their skill requirements plus rank 1 with a mentor of that craft. Five higher-tier jobs (Champion, Oracle, Archmage, Nightblade, Warden) need rank 5 and a related advanced job.
   - Each job has a sphere grid with **4 branches**, paid for with JP.
   - **Lock-in:** for each job, a hero can lock ONE unlocked ability and keep it after switching to another job.
   - A **sub job** uses half the job's stats plus every unlocked skill and passive on that job (not the raw stat nodes).
-- **Mentors.** There are 12 mentors, 2 per building. Some share a class but give different stat boosts.
-  - Every rank gives a visible stat change (a growing bonus; a smaller minus every 3rd rank).
-  - Rank 1 unlocks the **main job**. Rank 3 unlocks the **sub job**. Ranks 5, 7 and 10 grant a gift only that mentor can give.
+- **Mentors.** There are 22 mentors at the existing buildings (no new buildings). Mid-tier jobs keep dual mentors (like Paladin). The five highest jobs — Champion, Oracle, Archmage, Nightblade and Warden — each have two mentors who arrive at building Lv 5.
+  - Every rank gives a visible stat change (a growing bonus; a smaller minus every 3rd rank). Third-tier mentors grant **two rising stats** and a **larger minus**.
+  - Rank 1 unlocks a base or mid-tier **main job**. Rank 3 unlocks the **sub job**. Highest jobs open at rank 5 (plus their other requirements). Ranks 5, 7 and 10 grant a gift only that mentor can give.
 - **Bestiary.** Combat kills weaken a foe for good, in tiers at 15/50/150/400 kills. The Library and scholarship **lower the kills needed**; they never add kills. Each entry shows XP and gold earned from that foe.
-  - Once a boss is unlocked it can auto-appear every so often (and is guaranteed again after 20 wins).
+  - The battle bar shows the current **zone stage** and how many wins (and roughly how long) until the next. After a zone boss has been beaten once, it **automatically returns after 20 fights** in that zone, with a visible countdown (no random early appear).
   - Rare ✨ Gilded variants appear in 2% of fights.
   - Complete a zone's collection (every foe Mastered, every Gilded variant beaten, and the boss) to earn its relic. Relics are never dropped.
-- **Saves** from the v2 redesign (save version 3) migrate safely to version 4. Older pre-redesign saves still start a new journey, with the old file backed up. All v2 save protection (rolling backups, recovery screen, save codes, typed-RESET hard reset) is kept.
+- **Saves** from the v2 redesign (save version 3) and the playtest pass (version 4) migrate safely to version 5. Older pre-redesign saves still start a new journey, with the old file backed up. All v2 save protection (rolling backups, recovery screen, save codes, typed-RESET hard reset) is kept.
 - **Offline.** Workers keep working for up to 12 h. An expedition in progress keeps fighting at normal pace until stamina runs out, then the party rests.
 
 ## Keeping your save safe
@@ -48,21 +49,21 @@ A slow, cozy idle RPG for a party of three. You start in a painted town, choose 
   - "before the last restore".
 - **A save that can't load never turns into a new game.** The damaged save is kept under `lanternfall.save.broken` and a recovery screen offers Restore backup, Export the damaged save, or Paste a save code.
 
-## Pacing (from `tools/sim.js`, after the v2.1 playtest pass)
+## Pacing (from `tools/sim.js`, after the v2.2 gear/mentor pass)
 | Milestone | Active player (non-stop) | Regular player (3 sessions/day, 95 min) |
 |---|---|---|
 | First skill learned | ~18 min | ~8 h into day 1 |
-| First job | ~25 min | day 1 midday |
+| First job | ~23 min | day 1 midday |
 | Zone 2 | ~1.2 h | ~20 h (day 1 evening) |
-| Zone 3 | ~3.5 h | ~2.3 days |
-| Zone 4 | ~8.9 h | ~4.5 days |
-| Zone 5 | — | ~7.8 days |
+| Zone 3 | ~4.1 h | ~1.9 days |
+| Zone 4 | ~9.7 h | ~4.3 days |
+| Zone 5 | — | ~7.3 days |
 
-Early zones are kept on the v2 clock (zone 2 still ~75 minutes of active play, zone 3 still about two days of regular play). Later zones are a little faster than v2 because heroes are stronger (deeper mentors, better gear, race traits); later-zone enemies were scaled up so the calendar does not collapse.
+Early zones stay on the slow clock (zone 2 still ~75 minutes of active play). Unique, non-overlapping item skills make a mid-game party a little more capable, so a regular player's zone 3 stamp often lands at the end of day 2 (~1.9 days) rather than the next session window (~2.3 days). Mid-zone enemies were scaled slightly so active mid/late game does not speed up (zone 3 ~4.1 h and zone 4 ~9.7 h, a bit slower than v2.1). Later regular days stay close to v2.1 (zone 4 ~4.3 days, zone 5 ~7.3 days). Economy bonuses on new gear stay small.
 
 ## Files
 - `data.js`: all content (races, skills, jobs and sphere grids, items, relics, zones, town, mentors, gacha rates).
-- `engine.js`: simulation (no DOM), saves (v4; v3 playtest saves migrate safely; older pre-redesign saves are backed up and a fresh start begins).
+- `engine.js`: simulation (no DOM), saves (v5; v3 and v4 saves migrate safely; older pre-redesign saves are backed up and a fresh start begins).
 - `ui.js`, `style.css`, `index.html`: the interface (parchment and wood, phone first). Every page render is guarded.
 - `art/`: painted portraits, maps, battle backdrops, mentors and monsters (webp). `tools/art.py` rebuilds them from the sources.
 - `tools/sim.js`: pacing sim. `node tools/sim.js active 8` or `node tools/sim.js regular 12`.

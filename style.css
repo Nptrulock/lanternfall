@@ -363,7 +363,8 @@ body:not(.started) #a2hs{position:relative;left:auto;right:auto;bottom:auto;marg
 .featmini{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;padding:8px;background:#fff7e2;border:1px solid #c9a86a;border-radius:6px}
 .drill-track{position:relative;height:28px;background:#2a2418;border-radius:14px;overflow:hidden;margin:16px 0;border:2px solid #c9a86a}
 .drill-green{position:absolute;top:0;bottom:0;background:#5a9a3a;opacity:.9}
-.drill-mark{position:absolute;top:2px;bottom:2px;width:8px;margin-left:-4px;background:#f4e6c3;border-radius:2px;box-shadow:0 0 8px #fff8;animation:drillSlide 1.7s linear forwards}
+.drill-mark{position:absolute;top:2px;bottom:2px;width:8px;margin-left:-4px;background:#f4e6c3;border-radius:2px;box-shadow:0 0 8px #fff8;animation:drillSlide 1.75s linear forwards}
 @keyframes drillSlide{from{left:0}to{left:100%}}
 .baglist{max-height:320px;overflow:auto}
+.baglist .srow button.grow{text-align:left;background:none;border:0;box-shadow:none;font:inherit;color:inherit;padding:0;cursor:pointer}
 .bank .chip{margin:4px 4px 4px 0}

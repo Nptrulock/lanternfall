@@ -153,20 +153,33 @@ function placeFeatured(){ const S=G.S, f=featuredItem(); const it=D.ITEM[f.id]; 
 function placeMine(){ const S=G.S;
   return `<div class="parch card"><h3>💎 Diamonds: ${S.diamonds}</h3><p class="small">Only the mine digs up Diamonds, and slowly: one dig at a time. They also come from a boss's first defeat (+10) and from bestiary milestones. Spend them in the gear halls.</p>
     <div class="sklist">${profRow('mining')}</div></div><div class="parch card"><h3>Gems for sale</h3><div class="chips">${Object.keys(D.MATS).filter(m=>D.MATS[m].gem).map(m=>matChip(m)).join('')}</div><button class="btn" data-a="sellGems">Sell gems at the Market</button></div>`; }
+function mentorPlusBits(m, plusN, minusAmt){
+  const bits=[`<span class="up">+${mentorStatAmt(m.plus, plusN)} ${D.STAT_NAMES[m.plus]}</span>`];
+  if(m.plus2) bits.push(`<span class="up">+${mentorStatAmt(m.plus2, plusN)} ${D.STAT_NAMES[m.plus2]}</span>`);
+  if(minusAmt) bits.push(`<span class="down">−${minusAmt} ${D.STAT_NAMES[m.minus]}</span>`);
+  return bits;
+}
 function mentorCard(m){ const S=G.S; const avail=mentorAvailable(m.id); const j=D.JOBS[m.job];
-  const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v;
+  const jobNeed=jobMentorNeed(j);
   const rows=S.chars.map((c,ci)=>{ const st=c.mentors[m.id]||{rank:0,xp:0}; const here=c.act==='m:'+m.id; const r=st.rank, need=mentorNeed(r);
-    const plus=D.MENTOR_PLUS(r), minus=D.MENTOR_MINUS(r);
+    const plus=D.MENTOR_PLUS(r), minusAmt=mentorMinusAmt(m,r);
+    const statLine=r?mentorPlusBits(m, plus, minusAmt).join(' '):`<span class="muted">Rank 1: ${mentorPlusBits(m,1,0).join(' ')}</span>`;
     return `<div class="mrow">${portrait(c,ci)}<div class="grow"><b>${esc(c.name)}</b> <span class="lv">Rank ${r}/${D.MENTOR_MAX}</span>
       ${r<D.MENTOR_MAX?bar(st.xp, need, 'xp', `${here?fmtTime(need-st.xp)+' to rank '+(r+1):'not studying'} · ${Math.floor(pct(st.xp,need))}%`):'<div class="ok small">Mastered</div>'}
-      <div class="small">${r?`<span class="up">+${k(plus)} ${D.STAT_NAMES[m.plus]}</span>${minus?` <span class="down">−${m.minus==='hp'?minus*2:minus} ${D.STAT_NAMES[m.minus]}</span>`:''}`:`<span class="muted">Rank 1: +${k(1)} ${D.STAT_NAMES[m.plus]} and the main job</span>`}${r>=1?` · <span class="ok">${j.icon} ${j.name} main job open</span>`:''}${r>=3?` · <span class="ok">sub job open</span>`:''}</div></div>
+      <div class="small">${statLine}${r>=jobNeed && jobNeed?` · <span class="ok">${j.icon} ${j.name} main job open</span>`:''}${r>=3?` · <span class="ok">sub job open</span>`:''}</div></div>
       ${S.loc==='town'?`<button class="btn sm ${here?'on':''}" data-a="act" data-i="${ci}" data-v="${here?'rest':'m:'+m.id}" ${avail?'':'disabled'}>${here?'Stop':'Study'}</button>`:''}</div>`; }).join('');
-  const gifts=m.gifts||{}; const glist=[1,2,3,4,5,6,7,8,9,10].map(rk=>{ const plusN=D.MENTOR_PLUS(rk); const minusN=D.MENTOR_MINUS(rk); const g=gifts[rk];
-    const bits=[`<span class="up">+${k(plusN)} ${D.STAT_NAMES[m.plus]}</span>`]; if(minusN) bits.push(`<span class="down">−${m.minus==='hp'?minusN*2:minusN} ${D.STAT_NAMES[m.minus]}</span>`);
-    if(rk===1) bits.push('unlocks the main job'); if(rk===3) bits.push('unlocks the sub job'); if(g) bits.push(`<b>${esc(g.name)}</b> — ${esc(g.desc)}`);
+  const gifts=m.gifts||{}; const glist=[1,2,3,4,5,6,7,8,9,10].map(rk=>{ const plusN=D.MENTOR_PLUS(rk); const minusAmt=mentorMinusAmt(m,rk); const g=gifts[rk];
+    const bits=mentorPlusBits(m, plusN, minusAmt);
+    if(rk===1 && jobNeed<=1) bits.push('unlocks the main job');
+    if(jobNeed>1 && rk===jobNeed) bits.push('unlocks the main job (if the other requirements are met)');
+    if(rk===3) bits.push('unlocks the sub job');
+    if(g) bits.push(`<b>${esc(g.name)}</b> — ${esc(g.desc)}`);
     return `<li class="${S.chars.some(c=>mentorRank(c,m.id)>=rk)?'ok':''}"><b>Rank ${rk}</b> ${bits.join(' · ')}</li>`; }).join('');
-  return `<div class="parch card mentor"><div class="mhead"><img class="mp" src="art/m_${m.id}.webp" alt=""><div><h3>${esc(m.name)}</h3><div class="small">${j.icon} Teaches the <b>${j.name}</b> job (main at rank 1, sub at rank 3). Ranks 5, 7 and 10 grant a gift only this mentor can give.</div>
-    <div class="small">Every rank: <span class="up">↑ ${D.STAT_NAMES[m.plus]}</span> grows. <span class="down">↓ ${D.STAT_NAMES[m.minus]}</span> slips every 3rd rank.</div><div class="say">“${esc(m.line)}”</div></div></div>
+  const plusNames=`<span class="up">↑ ${D.STAT_NAMES[m.plus]}</span>`+(m.plus2?` and <span class="up">↑ ${D.STAT_NAMES[m.plus2]}</span>`:'');
+  const minusNote=(m.minusScale&&m.minusScale>1)?'slips more every 3rd rank':'slips every 3rd rank';
+  const mainNote=jobNeed>1?`main at rank ${jobNeed}, sub at rank 3`:`main at rank 1, sub at rank 3`;
+  return `<div class="parch card mentor"><div class="mhead"><img class="mp" src="art/m_${m.id}.webp" alt=""><div><h3>${esc(m.name)}</h3><div class="small">${j.icon} Teaches the <b>${j.name}</b> job (${mainNote}). Ranks 5, 7 and 10 grant a gift only this mentor can give.</div>
+    <div class="small">Every rank: ${plusNames} grow. <span class="down">↓ ${D.STAT_NAMES[m.minus]}</span> ${minusNote}.</div><div class="say">“${esc(m.line)}”</div></div></div>
     <ol class="giftlist">${glist}</ol>
     ${avail?rows:`<p class="short small">Arrives when the ${esc(D.PLACES[m.place].name)} reaches Lv ${mentorNeedLv(m.id)}.</p>`}</div>`; }
 function placeMentors(p){ const S=G.S; return `${S.loc==='exp'?'<p class="parch card small">The party is away. Heroes can study only while they are in town.</p>':''}<p class="small pdesc">Heroes study while the party rests in town (stamina then recovers at the normal rate, not the rest rate). The longer they train, the bigger the bonus and the minus.</p>${D.MENTORS.filter(m=>m.place===p).map(mentorCard).join('')}`; }
@@ -195,11 +208,13 @@ function placeTraining(){ const S=G.S; const cap=enduranceCap();
         ${c.endLv<cap?bar(c.endXp, need, 'xp', `${here?fmtTime(need-c.endXp)+' to Endurance '+(c.endLv+1):'not training'} · ${Math.floor(pct(c.endXp,need))}%`):`<div class="small">At the cap — upgrade the grounds.</div>`}
         <div class="small muted">Recovers 1 stamina every ${fmtTime(stamRegenSec(c))} (${fmtTime(stamRegenSec(c)/D.STAM.restMult)} when resting).</div></div>
         ${S.loc==='town'?`<div class="col"><button class="btn sm ${here?'on':''}" data-a="act" data-i="${ci}" data-v="train" ${c.endLv>=cap?'disabled':''}>Train</button><button class="btn sm ${c.act==='rest'?'on':''}" data-a="act" data-i="${ci}" data-v="rest">Rest</button></div>`:''}</div>`; }).join('')}</div>
-    <div class="parch card drill"><h3>🎯 Focus Drill</h3><p class="small">A short timing exercise. A perfect hit grants a tiny <b>permanent</b> bonus to XP and gold earned (0.3% / 0.1%), capping around 8%. It never replaces stamina training — it just makes a session at the grounds a little less dull.</p>
+    <div class="parch card drill"><h3>🎯 Focus Drill</h3><p class="small">A short timing exercise. A perfect hit grants a tiny <b>permanent</b> bonus to XP and gold earned (0.3% / 0.1%), capping around 8%. It never replaces stamina training — it just makes a session at the grounds a little less dull. Only a hero who is already training can take a drill.</p>
+    <p class="small muted">A hero must be <b>Training</b> at the grounds to attempt a drill. The green window moves around the track, and later drills get faster and tighter.</p>
     ${S.chars.map((c,ci)=>{ const d=c.drill||{xp:0,gold:0,n:0}; const u=(D.DRILL&&D.DRILL.unit)||0.001; const ready=canDrill(ci); const wait=drillWait(ci);
+      const label=S.loc!=='town'?'':(c.act!=='train'?'Start training first':(ready?'Focus Drill':'Ready in '+fmtTime(wait)));
       return `<div class="mrow">${portrait(c,ci)}<div class="grow"><b>${esc(c.name)}</b>
         <div class="small">Permanent bonus: <b>+${(d.xp*u*100).toFixed(1)}% XP</b> · <b>+${(d.gold*u*100).toFixed(1)}% gold</b> · ${d.n||0} drills · cap ${(drillCap()*u*100).toFixed(1)}%</div></div>
-        ${S.loc==='town'?`<button class="btn sm go" data-a="drillStart" data-i="${ci}" ${ready?'':'disabled'}>${ready?'Focus Drill': 'Ready in '+fmtTime(wait)}</button>`:''}</div>`; }).join('')}</div>`; }
+        ${S.loc==='town'?`<button class="btn sm go" data-a="drillStart" data-i="${ci}" ${ready?'':'disabled'}>${label}</button>`:''}</div>`; }).join('')}</div>`; }
 function compareFor(c, it, r){ // stat deltas if hero equipped this
   const cur=c.equip[it.slot]!=null?invItem(c.equip[it.slot]):null; const a=cur?defOf(cur).stats:{}; const b=scaledStats(it.stats, r||0); const keys=new Set([...Object.keys(a),...Object.keys(b)]);
   return [...keys].map(k=>{ const d=(b[k]||0)-(a[k]||0); return d?`<span class="${d>0?'up':'down'}">${D.STAT_NAMES[k]} ${d>0?'▲':'▼'}${Math.abs(d)}</span>`:''; }).join(' ') || '<span class="muted">same</span>'; }
@@ -249,7 +264,9 @@ function zoneCard(i){ const S=G.S, Z=D.ZONES[i], st=S.zones[i], open=zoneOpen(i)
   return `<div class="parch card zc"><div class="zh"><h3>${esc(Z.name)}</h3><span class="chip">Lv ${Z.lv}</span></div><p class="small">${esc(Z.desc)}</p>
     <div class="zfoes">${foes}<button class="zf boss" data-a="beast" data-e="${Z.boss.id}"><img src="${enemyImg(Z.boss.id)}" alt="" class="${st.bossKills?'':'unseen'}"><span>${st.bossKills?esc(Z.boss.name):'Boss'}</span><small>${st.boss?'defeated ✓':'guards the road'}</small></button></div>
     ${(()=>{ const n=D.STAGES||10, cur=zoneStage(i), rem=D.BOSS_REMATCH||20; const stageBar=`<div class="stages">${Array.from({length:n},(_,s)=>`<i class="stg ${s<cur?'got':s===cur?'now':''}" title="Stage ${s+1}"></i>`).join('')}<span class="small">Stage ${cur}/${n}</span></div>`;
-      return (!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone', `Battles won ${Math.min(st.wins,Z.wins)}/${Z.wins} — then the boss appears`)+stageBar:`<div class="small ok">Boss defeated. It returns after ${rem} more wins here (${st.sinceBoss}/${rem}), and may appear on its own before then.</div>`+stageBar); })()}
+      const left=winsToNextStage(i); const eta=left?` · ${left} win${left===1?'':'s'} to stage ${cur+1} (~${fmtTime(left*40)})`:'';
+      const remLine=st.boss?`<div class="small ok">Boss defeated. After the first win it returns automatically every ${rem} fights in this zone (${Math.max(0,rem-(st.sinceBoss||0))} to go).</div>`:'';
+      return (!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone', `Battles won ${Math.min(st.wins,Z.wins)}/${Z.wins} — then the boss appears`)+stageBar+ (cur<n?`<div class="small">${eta.slice(3)}</div>`:''):remLine+stageBar); })()}
     <div class="small">Collection: ${col.foes.filter(f=>f.t>=3).length}/${col.foes.length} Mastered · ${col.foes.filter(f=>f.gilded).length}/${col.foes.length} Gilded seen · boss ${col.boss?'✓':'✗'} → ${col.relic?`${col.relic.icon} ${esc(col.relic.name)} ${col.got?'<b class="ok">claimed</b>':''}`:'—'}</div>
     <div class="row gap">${S.loc==='town'?`<button class="btn go grow" data-a="depart" data-z="${i}" ${dep.ok?'':'disabled'}>🔥 Set out</button>${ready?`<button class="btn boss" data-a="departBoss" data-z="${i}" ${dep.ok&&S.chars.every(c=>c.stam>=D.STAM.boss)?'':'disabled'}>👑 Face ${esc(Z.boss.name)}</button>`:''}`
       : here ? `<button class="btn go grow" data-a="tab" data-t="camp">⚔️ Watch the battle</button>${ready?`<button class="btn boss" data-a="boss" data-z="${i}">👑 Boss next</button>`:''}` : `<span class="small muted">The party is out in ${esc(D.ZONES[S.zone].name)}.</span>`}</div>
@@ -281,8 +298,16 @@ function renderBattle(){
   const v=$('#view'); if(!v.querySelector('.battle')){ v.innerHTML=battleSkeleton(); v._h=null; UI.battleKey=null; }
   const S=G.S, B=S.battle, Z=D.ZONES[S.zone], st=S.zones[S.zone];
   const e=S.exp||{};
+  const nSt=D.STAGES||10, stg=zoneStage(S.zone);
+  let stageLine='';
+  if(stg<nSt){ const left=winsToNextStage(S.zone); stageLine=`Stage ${stg}/${nSt} · ${left} win${left===1?'':'s'} to stage ${stg+1} (~${fmtTime(left*40)})`; }
+  else { stageLine=`Stage ${nSt}/${nSt} · last stage`;
+    if(st.boss){ const left=fightsToBoss(S.zone); if(B&&B.boss) stageLine+=' · 👑 Zone boss'; else if(left===0 || S.pendingBoss) stageLine+=' · 👑 Boss ready'; else stageLine+=` · 👑 Boss returns in ${left} fight${left===1?'':'s'}`; }
+    else stageLine+=` · ${Math.min(st.wins,Z.wins)}/${Z.wins} wins to the boss`; }
+  const stageBar = stg<nSt ? bar((Z.wins/(nSt))*stg + ((st.wins||0) - Math.floor(stg*Z.wins/nSt)), Math.ceil((stg+1)*Z.wins/nSt)-Math.floor(stg*Z.wins/nSt) || 1, 'zone thin', stageLine)
+    : (st.boss && !(B&&B.boss) ? bar(st.sinceBoss||0, D.BOSS_REMATCH||20, 'zone thin', stageLine) : `<div class="small">${stageLine}</div>`);
   setHTML($('#expbar'), `<div class="eb1"><b>${esc(Z.name)}</b><span class="small">Trip: ${e.wins||0} wins · 🪙${e.gold||0}</span><button class="btn sm" data-a="home">🏠 Return</button></div>
-    ${!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone thin', `${Math.min(st.wins,Z.wins)}/${Z.wins} wins to the boss`):''}${bossReady(S.zone)&&!st.boss&&!(B&&B.boss)&&!S.pendingBoss?`<button class="btn boss sm" data-a="boss" data-z="${S.zone}">👑 Fight the boss next</button>`:''}${S.pendingBoss?'<div class="small boss">👑 The boss is next!</div>':''}`);
+    ${stageBar}${!st.boss?bar(Math.min(st.wins,Z.wins), Z.wins, 'zone thin', `${Math.min(st.wins,Z.wins)}/${Z.wins} wins to first boss`):''}${bossReady(S.zone)&&!st.boss&&!(B&&B.boss)&&!S.pendingBoss?`<button class="btn boss sm" data-a="boss" data-z="${S.zone}">👑 Fight the boss next</button>`:''}${st.boss&&bossReady(S.zone)&&!(B&&B.boss)&&!S.pendingBoss?`<button class="btn boss sm" data-a="boss" data-z="${S.zone}">👑 Fight the rematch</button>`:''}${S.pendingBoss?'<div class="small boss">👑 The boss is next!</div>':''}`);
   const scene=$('#scene'); const bg=`url(art/bg_${Z.id}.webp)`; if(scene.style.backgroundImage.indexOf(Z.id)<0) scene.style.backgroundImage=bg;
   const key=B?(B.enemies.map(x=>x.name).join('|')+':'+(B.t0||0)):'none';
   if(UI.battleKey!==key){ UI.battleKey=key;
@@ -384,7 +409,7 @@ function heroGear(c, ci){ const S=G.S;
       <div class="row gap">${cands.length?`<button class="btn sm" data-a="gslot" data-s="${slot}">${open?'Close':'Change ('+cands.length+')'}</button>`:`<span class="small muted">${slot==='relic'?'Relics come from completing a zone collection (Library).':'Get more from the gear halls, the Market or the Forge.'}</span>`}${u?`<button class="btn sm" data-a="unequip" data-s="${slot}">Remove</button>`:''}</div>
       ${open?`<div class="cands">${cands.map(x=>{ const it=defOf(x); const nw=it.skills.filter(s=>!c.learned[s]).length;
         return `<div class="srow"><span class="grow">${rname(x)}<div class="small">${slot==='relic'?statLine(it.stats):compareFor(c, D.ITEM[x.id], x.r)}${nw?' · <span class="ok">'+nw+' new skill'+(nw>1?'s':'')+'</span>':''}</div></span><button class="btn sm go" data-a="equip" data-uid="${x.uid}">Equip</button></div>`; }).join('')}</div>`:''}</div>`; }).join('') + `<div class="parch card bag"><div class="row gap wrap"><h3 class="grow">Inventory</h3><label class="small">Sort <select data-sel="bagSort">${[['rarity','Rarity'],['tier','Tier'],['slot','Slot'],['name','Name']].map(([k,l])=>`<option value="${k}" ${(G.S.bagSort||'rarity')===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
-      <div class="baglist">${(sortInv(G.S.bagSort||'rarity'), G.S.inv).map(u=>{ const it=defOf(u); const who=equippedBy(u.uid); return `<div class="srow">${rname(u)} <small>T${it.tier||0} · ${D.SLOT_NAMES[it.slot]||it.slot}${who>=0?' · on '+esc(G.S.chars[who].name):''}${it.bonus?' · worn bonus':''}</small></div>`; }).join('')||'<div class="muted small">Empty.</div>'}</div></div>`; }
+      <div class="baglist">${(sortInv(G.S.bagSort||'rarity'), G.S.inv).map(u=>{ const it=defOf(u); const who=equippedBy(u.uid); const band=it.band||(D.BAND_OF&&D.BAND_OF(it.tier)); const bl=band&&D.BAND_LABEL?D.BAND_LABEL[band]:''; return `<div class="srow"><button class="grow left" data-a="itemInfo" data-id="${u.id}">${rname(u)} <small>T${it.tier||0}${bl?' · '+bl:''} · ${D.SLOT_NAMES[it.slot]||it.slot}${who>=0?' · on '+esc(G.S.chars[who].name):''}${it.bonus?' · worn bonus':''} · ${it.skills.map(s=>skillName(s)).join(', ')}</small></button></div>`; }).join('')||'<div class="muted small">Empty.</div>'}</div></div>`; }
 
 /* ---------------- CODEX ---------------- */
 const CODEX=[['bestiary','🐾 Bestiary'],['relics','💠 Relics'],['mats','🧱 Materials'],['save','💾 Save'],['help','❓ Guide'],['settings','⚙️ Settings']];
@@ -525,10 +550,12 @@ const ACT = {
   togSkill(d){ toggleSkill(+d.i, d.sid); },
   bagSort(d){ sortInv(d.k||d.v||G.S.bagSort); },
   pullFeat(){ const r=pullFeatured(); if(!r){ G.toast((featuredItem().taken)?'Already claimed today.':'Not enough 💎.','bad'); return; } save(); pullAnim([r], 'hall'); },
-  drillStart(d){ const ci=+d.i; if(!canDrill(ci)){ G.toast('Focus Drill is cooling down.','bad'); return; }
-    const left=56+Math.random()*16, width=14; UI.drill={ci, left, width};
-    modal(`<h2>🎯 Focus Drill</h2><p class="small">Tap when the marker is in the green. A perfect hit grants a tiny permanent XP and gold bonus.</p>
-      <div class="drill-track"><div class="drill-green" style="left:${left}%;width:${width}%"></div><div class="drill-mark" id="drillMark"></div></div>
+  drillStart(d){ const ci=+d.i; const c=G.S.chars[ci];
+    if(!c || c.act!=='train'){ G.toast('Start training first. Focus Drill is only available while a hero is Training.','bad'); return; }
+    if(!canDrill(ci)){ G.toast('Focus Drill is cooling down.','bad'); return; }
+    const w=drillWindow(ci); UI.drill={ci, left:w.left, width:w.width, slack:w.slack};
+    modal(`<h2>🎯 Focus Drill</h2><p class="small">Tap when the marker is in the green. Later drills get faster and the window gets tighter. A perfect hit grants a tiny permanent XP and gold bonus.</p>
+      <div class="drill-track"><div class="drill-green" style="left:${w.left}%;width:${w.width}%"></div><div class="drill-mark" id="drillMark" style="animation-duration:${w.duration}s"></div></div>
       <button class="btn go big" data-a="drillTap">Tap!</button>`);
     const mark=document.getElementById('drillMark');
     if(mark) mark.addEventListener('animationend', ()=>{ if(UI.drill&&UI.drill.ci===ci){ applyDrill(ci,'miss'); UI.drill=null; closeModal(); G.toast('The moment passed.','bad'); renderAll(); } }); },
@@ -536,7 +563,7 @@ const ACT = {
     const mark=document.getElementById('drillMark'), green=document.querySelector('.drill-green');
     let quality='miss';
     if(mark&&green){ const m=mark.getBoundingClientRect(), g=green.getBoundingClientRect(); const cx=m.left+m.width/2;
-      if(cx>=g.left && cx<=g.right) quality='perfect'; else if(cx>=g.left-18 && cx<=g.right+18) quality='good'; }
+      const slack=(d.slack!=null)?d.slack:18; if(cx>=g.left && cx<=g.right) quality='perfect'; else if(cx>=g.left-slack && cx<=g.right+slack) quality='good'; }
     applyDrill(d.ci, quality); UI.drill=null; closeModal();
     const bonus=(((G.S.chars[d.ci].drill||{}).xp||0)*((D.DRILL&&D.DRILL.unit)||0.001)*100).toFixed(1);
     G.toast(quality==='miss'?'Missed the window.':`🎯 ${quality==='perfect'?'Perfect':'Good'}! Permanent XP/gold is now +${bonus}%.`, quality==='miss'?'bad':'good'); },
@@ -566,7 +593,9 @@ const ACT = {
   matInfo(d){ const m=d.m, M=D.MATS[m]; const src=matSources(m);
     modal(`<h2>${M.icon} ${esc(M.name)}</h2><p>You have <b>${G.S.mats[m]||0}</b>.</p><p class="muted">${esc(M.desc)}</p><h3>Where to get it</h3><ul>${src.map(s=>`<li>${esc(s.text)}</li>`).join('')||'<li>—</li>'}</ul><h3>Used for</h3><p>${matUses(m).map(esc).join(' · ')||'—'}</p><button class="btn" data-a="place" data-p="hall">🏛️ Assign a worker</button>`); },
   itemInfo(d){ const it=D.ITEM[d.id]; if(!it) return;
-    modal(`<h2>${it.icon} ${esc(it.name)}</h2><p>${D.SLOT_NAMES[it.slot]} · ${statLine(it.stats)} (Common; higher rarities scale stats)</p><h3>Skills</h3>${it.skills.map(s=>`<p><b>${skillName(s)}</b> (${D.SKILLS[s].ap} AP): ${esc(D.SKILLS[s].desc)}<br><small class="muted">Learned by: ${G.S.chars.filter(c=>c.learned[s]).map(c=>esc(c.name)).join(', ')||'nobody yet'}</small></p>`).join('')}<h3>Where it comes from</h3><ul>${itemSources(it.id).map(s=>`<li>${esc(s.text)}</li>`).join('')}</ul><p class="small">Owned: ${G.S.inv.filter(u=>u.id===it.id).length}</p>`); },
+    const band=it.band||(D.BAND_OF&&D.BAND_OF(it.tier))||''; const bl=band&&D.BAND_LABEL?D.BAND_LABEL[band]:''; const sc=band&&D.BAND_SCALE?D.BAND_SCALE[band]:'';
+    const bonus=it.bonus?`<p class="small">Worn bonus: ${esc(Object.entries(it.bonus).map(([k,v])=>typeof v==='number'&&v<1?`${k} +${(v*100).toFixed(0)}%`:`${k} +${v}`).join(', '))}</p>`:'';
+    modal(`<h2>${it.icon} ${esc(it.name)}</h2><p>${D.SLOT_NAMES[it.slot]} · Tier ${it.tier}${bl?` · <b>${esc(bl)}</b> band (${sc}×)`:''}<br>${statLine(it.stats)} (Common; higher rarities scale stats)</p>${bonus}<h3>Unique skill</h3>${it.skills.map(s=>`<p><b>${skillName(s)}</b> (${D.SKILLS[s].kind}, ${D.SKILLS[s].ap} AP): ${esc(D.SKILLS[s].desc)}<br><small class="muted">Learned by: ${G.S.chars.filter(c=>c.learned[s]).map(c=>esc(c.name)).join(', ')||'nobody yet'}</small></p>`).join('')}<h3>Where it comes from</h3><ul>${itemSources(it.id).map(s=>`<li>${esc(s.text)}</li>`).join('')}</ul><p class="small">Owned: ${G.S.inv.filter(u=>u.id===it.id).length}</p>`); },
   closeModal(){ closeModal(); },
   tutSkip(){ G.S.flags.tutDone=1; }, tutReset(){ G.S.flags.tutDone=0; G.toast('The guide is back.'); },
   exportSave(){ codeModal(exportSave(), '💾 Save code', 'Copy this text and keep it somewhere safe. Paste it back with “Paste a save code”.'); },

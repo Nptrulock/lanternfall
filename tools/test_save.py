@@ -93,7 +93,7 @@ with sync_playwright() as p:
     tap(pg, '.bak [data-a=restoreAsk][data-k="lanternfall.save.prerestore"]'); tap(pg, '#modal [data-a=restoreDo]'); pg.wait_for_timeout(300)
     st2 = S(pg, "({g:S.gold,n:S.chars[0].name})")
     rec('round-trip: the game you replaced was kept as a backup and comes back', st2['n'] == 'Current' and st2['g'] == 999, (st, st2))
-    # ---------- v3 -> v4 migrate (boss-kill clamp, grandfathered subjob, new fields) ----------
+    # ---------- v3 -> v5 migrate (via v4: boss-kill clamp, grandfathered subjob, new fields) ----------
     pg.evaluate("""(()=>{__G.noSave=true; const s=JSON.parse(localStorage.getItem('lanternfall.save'));
       s.v=3; s.bestiary=s.bestiary||{}; s.bestiary.king_slime=200; s.bestiary.slime=12;
       s.zones[0].boss=true; s.zones[0].bossKills=2;
@@ -103,7 +103,14 @@ with sync_playwright() as p:
     pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
     if pg.locator('#modal .mclose').count(): tap(pg, '#modal .mclose')
     st = S(pg, "({v:S.v,k:S.bestiary.king_slime,leg:!!(S.chars[0].mentors.sela&&S.chars[0].mentors.sela.legacySub),bank:!!S.bank,mas:!!S.profs.masonry,sub:subjobOk(S.chars[0],'priest')})")
-    rec('v3 save migrates to v4, clamps inflated slime-boss kills to real bossKills, grandfathers subjobs, adds bank/masonry', st['v']==4 and st['k']==2 and st['leg'] and st['bank'] and st['mas'] and st['sub'], st)
+    rec('v3 save migrates to v5, clamps inflated slime-boss kills to real bossKills, grandfathers subjobs, adds bank/masonry', st['v']==5 and st['k']==2 and st['leg'] and st['bank'] and st['mas'] and st['sub'], st)
+    # ---------- v4 -> v5 migrate ----------
+    pg.evaluate("""(()=>{__G.noSave=true; const s=JSON.parse(JSON.stringify(__G.S));
+      s.v=4; localStorage.setItem('lanternfall.save', JSON.stringify(s));})()""")
+    pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
+    if pg.locator('#modal .mclose').count(): tap(pg, '#modal .mclose')
+    st = S(pg, "({v:S.v,started:S.started,n:S.chars.length,k:S.bestiary.king_slime})")
+    rec('v4 playtest save migrates to v5 and keeps the party', st['v']==5 and st['started'] and st['n']==3 and st['k']==2, st)
     # ---------- corrupted save ----------
     good = pg.evaluate("save(true);localStorage.getItem('lanternfall.save')")
     bad_raw = good[:len(good) // 2]

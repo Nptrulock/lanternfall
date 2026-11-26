@@ -163,7 +163,7 @@ with sync_playwright() as p:
         close_modal(pg, touch)
 
         # ---------- playtest pass: stages, skills, fuse, bank, masonry, study, cooking, gacha ----------
-        rec(f'{tag} save version is 4', S(pg, "S.v") == 4)
+        rec(f'{tag} save version is 5', S(pg, "S.v") == 5)
         rec(f'{tag} fuse requires 10 copies; Mythic only at a maxed Forge', S(pg, "fuseNeed()===10 && fuseLimit()===Math.min(4,Math.floor(S.buildings.forge/2)) && (S.buildings.forge=8, fuseLimit()===5)"))
         place(pg, 'market', touch)
         rec(f'{tag} market shows few rotating slots', S(pg, "shopItems().length") <= 3 and 'Rotating stall' in pg.locator('.shop').inner_text())
@@ -218,6 +218,93 @@ with sync_playwright() as p:
             nav(pg, 'codex', touch); tap(pg, '[data-a=cview][data-v=bestiary]', 0, touch) if pg.locator('[data-a=cview][data-v=bestiary]').count() else None
             shot(pg, tag, '29-bestiary-xp-gold', True)
 
+        # ---------- v5: drill gate, unique gear, third-tier mentors, battle stage tracker ----------
+        st = S(pg, """(()=>{
+          const overlap=[]; const seen={};
+          D.ITEMS.forEach(it=>{ (it.skills||[]).forEach(s=>{ (seen[s]=seen[s]||[]).push(it.id); }); });
+          Object.entries(seen).forEach(([s,ids])=>{ if(ids.length>1) overlap.push(s+':'+ids.join(',')); });
+          const counts={}; const bands={low:0,mid:0,top:0,exclusive:0};
+          let minOk=true; D.ITEMS.forEach(it=>{ const k=it.tier+'.'+it.slot; counts[k]=(counts[k]||0)+1; bands[it.band||D.BAND_OF(it.tier)]=(bands[it.band||D.BAND_OF(it.tier)]||0)+1; });
+          for(let t=1;t<=7;t++) for(const s of ['weapon','armor','acc']) if((counts[t+'.'+s]||0)<5) minOk=false;
+          const mid=D.MENTORS.filter(m=>m.need===5);
+          return {n:D.ITEMS.length, overlap, minOk, bands, mentors:mid.length, plus2:mid.every(m=>!!m.plus2 && m.minusScale===2), shop:D.ITEMS.filter(it=>it.shop).length};
+        })()""")
+        rec(f'{tag} every item has a unique skill (no overlaps)', st['n']>=180 and st['overlap']==[], st)
+        rec(f'{tag} mid/top/exclusive gear is the bulk of the catalog, >=5 items per slot from T1–T7', st['minOk'] and st['bands']['exclusive']>=st['bands']['top']>=st['bands']['mid']>=st['bands']['low'], st)
+        rec(f'{tag} ten third-tier mentors with two pluses and a larger minus', st['mentors']==10 and st['plus2'], st)
+
+        st = S(pg, """(()=>{
+          const c=S.chars[0]; c.act='rest'; c.drill={xp:0,gold:0,n:0,last:0}; S.loc='town';
+          const rest=canDrill(0); c.act='train'; const train=canDrill(0);
+          const w0=drillWindow(0,0), w20=drillWindow(0,20);
+          return {rest,train,d0:w0.duration,d20:w20.duration,w0:w0.width,w20:w20.width};
+        })()""")
+        rec(f'{tag} Focus Drill only while Training, and later drills are faster and tighter', (not st['rest']) and st['train'] and st['d20']<st['d0'] and st['w20']<st['w0'] and st['d20']<1.2 and st['w20']<16, st)
+
+        st = S(pg, """(()=>{
+          const b=S.buildings; ['training','forge','chapel','arcanum','den','lodge'].forEach(k=>b[k]=4);
+          const closed=!mentorAvailable('rowan') && mentorNeedLv('rowan')===5;
+          b.training=5; const open=mentorAvailable('rowan');
+          const c=S.chars[0]; c.mentors=c.mentors||{}; c.mentors.rowan={rank:3,xp:0}; dirty();
+          const e=mentorEff(c);
+          return {closed,open,str:e.str,hp:e.hp,mag:e.mag};
+        })()""")
+        rec(f'{tag} third-tier mentors arrive at building Lv 5; rank 3 gives two pluses and a doubled minus', st['closed'] and st['open'] and st['str']==3 and st['hp']==9 and st['mag']==-2, st)
+
+        st = S(pg, """(()=>{
+          const z=S.zones[0]; z.wins=80; z.boss=true; z.sinceBoss=7;
+          let early=false; for(let i=0;i<30;i++) if(bossMayAppear(0)) early=true;
+          const left=fightsToBoss(0);
+          z.sinceBoss=20; const ready=bossMayAppear(0) && fightsToBoss(0)===0;
+          z.sinceBoss=7;
+          return {early,left,ready,stage:zoneStage(0), next:winsToNextStage(0)};
+        })()""")
+        rec(f'{tag} after the first boss, rematches are a countdown (no random early appear)', st['left']==13 and not st['early'] and st['ready'] and st['stage']==10 and st['next']==0, st)
+
+        if tag == 'iphone':
+            pg.evaluate("(()=>{const S=__G.S; S.loc='town'; S.buildings.training=5; S.buildings.chapel=5; S.buildings.forge=5; S.buildings.arcanum=5; S.buildings.den=5; S.buildings.lodge=5; const c=S.chars[0]; c.act='train'; c.drill={xp:0,gold:0,n:0,last:0};})()")
+            place(pg, 'training', touch)
+            if pg.locator('[data-a=ptab][data-k=train]').count(): tap(pg, '[data-a=ptab][data-k=train]', 0, touch)
+            shot(pg, tag, '30-focus-drill-training', True)
+            if pg.locator('[data-a=drillStart]:not([disabled])').count():
+                tap(pg, '[data-a=drillStart]:not([disabled])', 0, touch); pg.wait_for_timeout(350)
+                shot(pg, tag, '30b-focus-drill-modal')
+                close_modal(pg, touch)
+            # faster/tighter window at high n
+            pg.evaluate("(()=>{S.chars[0].act='train'; S.chars[0].drill={xp:0,gold:0,n:24,last:0};})()".replace('S.chars','__G.S.chars'))
+            if pg.locator('[data-a=drillStart]:not([disabled])').count():
+                tap(pg, '[data-a=drillStart]:not([disabled])', 0, touch); pg.wait_for_timeout(200)
+                shot(pg, tag, '30c-focus-drill-fast')
+                close_modal(pg, touch)
+            pg.evaluate("""(()=>{const S=__G.S; ['padded','oak_torc','ash_pike','rime_plate','wyrm_halberd','sunscale_charm','cinder_blade','crypt_plate'].forEach(id=>addItem(id,2)); sortInv('tier');})()""")
+            nav(pg, 'party', touch); tap(pg, '[data-a=sel][data-i="0"]', 0, touch)
+            if pg.locator('[data-a=htab][data-k=gear]').count(): tap(pg, '[data-a=htab][data-k=gear]', 0, touch)
+            pg.wait_for_timeout(200); shot(pg, tag, '31-gear-list', True)
+            # item detail: prefer a unique mid/top item in a hall pool button or bag
+            if pg.locator('[data-a=itemInfo][data-id=wyrm_halberd]').count():
+                tap(pg, '[data-a=itemInfo][data-id=wyrm_halberd]', 0, touch)
+            elif pg.locator('[data-a=itemInfo]').count():
+                tap(pg, '[data-a=itemInfo]', 0, touch)
+            else:
+                place(pg, 'forge', touch)
+                if pg.locator('[data-a=itemInfo][data-id=wyrm_halberd]').count():
+                    tap(pg, '[data-a=itemInfo][data-id=wyrm_halberd]', 0, touch)
+                elif pg.locator('[data-a=itemInfo]').count():
+                    tap(pg, '[data-a=itemInfo]', -1, touch)
+            pg.wait_for_timeout(200); shot(pg, tag, '32-item-detail')
+            close_modal(pg, touch)
+            place(pg, 'training', touch)
+            if pg.locator('[data-a=ptab][data-k=mentors]').count(): tap(pg, '[data-a=ptab][data-k=mentors]', 0, touch)
+            pg.wait_for_timeout(200); shot(pg, tag, '33-advanced-mentors', True)
+            pg.evaluate(REFILL + ";__G.S.zones[0].wins=24; __G.S.zones[0].boss=false; depart(0,false);")
+            nav(pg, 'camp', touch); pg.wait_for_timeout(400)
+            shot(pg, tag, '34-battle-stage-tracker')
+            pg.evaluate("goHome('manual');" + REFILL)
+            pg.evaluate("(()=>{const S=__G.S; S.zones[0].wins=80; S.zones[0].boss=true; S.zones[0].bossKills=1; S.zones[0].sinceBoss=7; depart(0,false);})()")
+            nav(pg, 'camp', touch); pg.wait_for_timeout(400)
+            shot(pg, tag, '35-boss-countdown')
+            pg.evaluate("goHome('manual')")
+
         over = []
         for t in ['town', 'map', 'camp', 'party', 'codex']:
             nav(pg, t, touch)
@@ -225,7 +312,7 @@ with sync_playwright() as p:
             if ov > 1: over.append((t, ov))
         rec(f'{tag} no horizontal overflow on any tab', not over, over)
         # ---------- boss ----------
-        pg.evaluate("__G.S.zones[0].wins=80;" + REFILL)
+        pg.evaluate("__G.S.zones[0].wins=80; __G.S.zones[0].boss=false; __G.S.zones[0].sinceBoss=0; __G.S.pendingBoss=false;" + REFILL)
         nav(pg, 'map', touch); tap(pg, '.zc [data-a=departBoss][data-z="0"]', 0, touch); pg.wait_for_timeout(2600)
         rec(f'{tag} after 80 wins the boss can be challenged', S(pg, "!!(S.battle&&S.battle.boss)"), S(pg, "S.battle&&S.battle.enemies.map(e=>e.name)"))
         if W < 1000: shot(pg, tag, '13-boss')
@@ -251,7 +338,7 @@ with sync_playwright() as p:
         pg.evaluate("(()=>{__G.noSave=true;localStorage.setItem('lanternfall.save',JSON.stringify({v:2,started:true,chars:[{name:'Old'}]}))})()")
         pg.reload(wait_until='networkidle'); pg.wait_for_timeout(800)
         st = S(pg, "({v:S.v,started:S.started,backup:!!localStorage.getItem('lanternfall.save.v2backup')})")
-        rec(f'{tag} old v1 save -> fresh start, backed up, one-time new-journey notice', st['v'] == 4 and not st['started'] and st['backup'] and pg.locator('#modal h2', has_text='new journey').count() == 1, st)
+        rec(f'{tag} old v1 save -> fresh start, backed up, one-time new-journey notice', st['v'] == 5 and not st['started'] and st['backup'] and pg.locator('#modal h2', has_text='new journey').count() == 1, st)
         close_modal(pg, touch)
         pg.evaluate(f"__G.noSave=false;importSave({code!r});__debug.render()"); pg.wait_for_timeout(300)
         # ---------- render guard ----------

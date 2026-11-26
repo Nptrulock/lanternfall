@@ -2,7 +2,7 @@
 /* Lanternfall v2 — engine (no DOM). Exposes G. */
 const G = {S:null, ev:[], quiet:false, toast:null, now:()=>Date.now(), cv:1};
 const SAVE_KEY = 'lanternfall.save';
-const SAVE_V = 4;
+const SAVE_V = 5;
 const rnd = (a,b)=>a+Math.random()*(b-a), ri=(a,b)=>Math.floor(rnd(a,b+1)), pick=a=>a[Math.floor(Math.random()*a.length)], chance=p=>Math.random()<p;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const fmtTime=s=>{s=Math.max(0,Math.floor(s));const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;return d?`${d}d ${h}h`:h?`${h}h ${m}m`:m?`${m}m ${x}s`:`${x}s`};
@@ -35,7 +35,7 @@ function newState(){
     settings:{autoBoss:false},
     log:[]};
 }
-/* Save versions: v1/v2 were the first release. v3 is the town-first redesign (fresh start). v4 is the playtest pass; v3 saves migrate safely. */
+/* Save versions: v1/v2 were the first release. v3 is the town-first redesign (fresh start). v4 is the playtest pass; v5 is the gear/mentor/drill/battle-UI pass. v3 and v4 saves migrate safely. */
 function migrateV3to4(s){
   try{
     if(s.zones && s.bestiary && D && D.ZONES){
@@ -49,11 +49,17 @@ function migrateV3to4(s){
     s.v=4;
   }catch(e){ s.v=4; }
 }
+function migrateV4to5(s){
+  try{
+    s.v=5;
+  }catch(e){ s.v=5; }
+}
 function migrate(s){
   if(!s || typeof s!=='object') throw new Error('The save is not readable data.');
   if(typeof s.v!=='number') s.v=0;
   if(s.v<3) throw Object.assign(new Error('old'), {oldSave:true});
   if(s.v===3) migrateV3to4(s);
+  if(s.v===4) migrateV4to5(s);
   if(s.v>SAVE_V) throw new Error('This save is from a newer version of Lanternfall.');
   if(!Array.isArray(s.chars)) throw new Error('The save has no party.');
   if(s.started && s.chars.length!==3) throw new Error('The party in the save is damaged.');
@@ -190,9 +196,13 @@ function skillSet(c){
 function isAbilityNode(n){ if(!n||!n.eff) return false; if(n.eff.grant) return true; const ks=Object.keys(n.eff); if(!ks.length) return false; if(ks.length===1 && ks[0]==='stat') return false; return true; }
 
 function mentorRank(c, mid){ return (c.mentors[mid]&&c.mentors[mid].rank)||0; }
-function mentorEff(c){ const o={}; for(const mid in c.mentors){ const r=mentorRank(c,mid); if(!r) continue; const m=D.MENTOR[mid];
-    const k=v=>m.plus==='hp'?v*3:m.plus==='mp'?v*2:v; o[m.plus]=(o[m.plus]||0)+k(D.MENTOR_PLUS(r));
-    const mn=D.MENTOR_MINUS(r); if(mn) o[m.minus]=(o[m.minus]||0)-(m.minus==='hp'?mn*2:mn); } return o; }
+function mentorStatAmt(stat, v){ return stat==='hp'?v*3:stat==='mp'?v*2:v; }
+function mentorMinusAmt(m, r){ const mn=D.MENTOR_MINUS(r); if(!mn) return 0; const base=m.minus==='hp'?mn*2:mn; return Math.round(base*(m.minusScale||1)); }
+function mentorEff(c){ const o={}; for(const mid in c.mentors){ const r=mentorRank(c,mid); if(!r) continue; const m=D.MENTOR[mid]; if(!m) continue;
+    const plus=D.MENTOR_PLUS(r);
+    o[m.plus]=(o[m.plus]||0)+mentorStatAmt(m.plus, plus);
+    if(m.plus2) o[m.plus2]=(o[m.plus2]||0)+mentorStatAmt(m.plus2, plus);
+    const mn=mentorMinusAmt(m,r); if(mn) o[m.minus]=(o[m.minus]||0)-mn; } return o; }
 function mentorGifts(c){ const out=[]; for(const mid in (c.mentors||{})){ const r=mentorRank(c,mid); const g=D.MENTOR[mid]&&D.MENTOR[mid].gifts; if(!g) continue;
     for(const rk of (D.MENTOR_GIFT_RANKS||[5,7,10])) if(r>=rk && g[rk] && g[rk].eff) out.push(g[rk].eff); } return out; }
 
@@ -348,8 +358,8 @@ function sellMats(){ const S=G.S; let g=0; for(const m in D.MATS){ if(!D.MATS[m]
 /* ---------------- stamina, training, mentors (in town) ---------------- */
 function stamRegenSec(c){ return D.STAM.regenSec/(1+D.STAM.regenPerLv*(c.endLv-1)); }
 function enduranceCap(){ return 5*G.S.buildings.training; }
-function mentorAvailable(mid){ const m=D.MENTOR[mid]; const L=G.S.buildings[m.place]; return m.need<=1 ? L>=1 : L>=3; }
-function mentorNeedLv(mid){ const m=D.MENTOR[mid]; return m.need<=1?1:3; }
+function mentorNeedLv(mid){ const m=D.MENTOR[mid]; return m.need<=1?1:m.need<=3?3:5; }
+function mentorAvailable(mid){ const m=D.MENTOR[mid]; return (G.S.buildings[m.place]||0)>=mentorNeedLv(mid); }
 function setAct(ci, act){ const c=G.S.chars[ci]; if(act.startsWith('m:') && !mentorAvailable(act.slice(2))) return false; if(act==='train' && c.endLv>=enduranceCap()) return false;
   if(act.startsWith('m:') && mentorRank(c,act.slice(2))>=D.MENTOR_MAX) return false; c.act=act; return true; }
 function tickTown(dt){
@@ -410,7 +420,7 @@ function checkCollections(){ const S=G.S; D.ZONES.forEach((z,zi)=>{ const c=zone
   log(`💠 Collection complete: ${z.name}! The Library awards ${c.relic.icon} ${c.relic.name}.`,'relic'); toast(`💠 RELIC: ${c.relic.icon} ${c.relic.name} — ${z.name} collection complete!`,'relic'); emit({t:'relic', id:c.relic.id}); if(G.sum) G.sum.items.push('💠 '+c.relic.name); } }); }
 function enemyStats(e, zi){
   const r=D.ROLES[e.role], P=D.ZP; const b=e.boss?{hp:4.5,atk:1.25,def:1.2,agi:1.1,xp:8,gold:10}:{hp:1,atk:1,def:1,agi:1,xp:1,gold:1};
-  const late=zi<2?1:zi===2?1.14:1+0.22*(zi-2); // zone 3+ a little sturdier so later power spikes do not shrink the calendar
+  const late=zi<1?1:zi===1?1.22:zi===2?1.20:1+0.22*(zi-2); // mid zones a little sturdier so unique mid-tier gear does not shrink the calendar
   return {hp:Math.max(3,Math.round(P.hp[zi]*r.hp*b.hp*late)), atk:Math.max(2,Math.round(P.atk[zi]*r.atk*b.atk*late)), def:Math.round(P.def[zi]*r.def*b.def*late), agi:Math.max(1,Math.round(P.agi[zi]*r.agi*b.agi)),
     mag:r.mag?Math.round(P.atk[zi]*r.mag*b.atk*late):0, xp:Math.round(P.xp[zi]*(r.hp+r.atk)/2*b.xp), gold:Math.max(1,Math.round(P.gold[zi]*b.gold))};
 }
@@ -607,7 +617,9 @@ function grantStage(zi, before, after){ const n=D.STAGES||10; const a=zoneStage(
     let extra=''; if(s===5||s===10){ gain('diamond',1); extra=' +1💎'; }
     log(`🚩 ${D.ZONES[zi].name} stage ${s}/${n}: +${gold} gold${extra}.`,'good'); toast(`🚩 Stage ${s}/${n}${extra}`,'good'); } }
 function bossReady(zi){ const z=G.S.zones[zi]; return (!z.boss && z.wins>=D.ZONES[zi].wins) || (z.boss && z.sinceBoss>=(D.BOSS_REMATCH||20)); }
-function bossMayAppear(zi){ if(bossReady(zi)) return true; const z=G.S.zones[zi]; if(z.boss && z.sinceBoss>=8 && Math.random()<(D.BOSS_CHANCE||0.08)) return true; return false; }
+function winsToNextStage(zi, wins){ const need=D.ZONES[zi].wins, n=D.STAGES||10; const w=(wins==null)?(G.S.zones[zi].wins||0):wins; const s=zoneStage(zi,w); if(s>=n) return 0; return Math.max(0, Math.ceil((s+1)*need/n)-w); }
+function fightsToBoss(zi){ const z=G.S.zones[zi]; if(!z.boss) return null; return Math.max(0, (D.BOSS_REMATCH||20)-(z.sinceBoss||0)); }
+function bossMayAppear(zi){ return bossReady(zi); }
 
 function zoneUnlocked(zi){ return zoneOpen(zi); }
 function maxZoneOpen(){ let m=0; D.ZONES.forEach((z,i)=>{ if(zoneOpen(i)) m=i; }); return m; }
@@ -786,8 +798,13 @@ function bankDeposit(n){ const S=G.S; n=Math.floor(n); if(n<=0||S.gold<n) return
 function bankWithdraw(n){ const S=G.S; n=Math.min(Math.floor(n), Math.floor(S.bank.gold)); if(n<=0) return false; S.bank.gold-=n; S.gold+=n; dirty(); return true; }
 function bankConvert(n){ const S=G.S, rate=(D.BANK&&D.BANK.goldPerDia)||600; n=Math.floor(n)||1; const need=n*rate; if((S.bank.earned||0)<need || S.bank.gold<need) return false; S.bank.gold-=need; S.bank.earned-=need; gain('diamond', n); dirty(); return true; }
 function drillCap(){ return ((D.DRILL&&D.DRILL.cap)||80) + Math.max(0, ((G.S.buildings.training||1)-1)*4); }
-function canDrill(ci){ const c=G.S.chars[ci]; if(!c) return false; const last=(c.drill&&c.drill.last)||0; return G.now()-last >= ((D.DRILL&&D.DRILL.cooldown)||45)*1000; }
-function drillWait(ci){ const c=G.S.chars[ci]; const last=(c.drill&&c.drill.last)||0; return Math.max(0, ((D.DRILL&&D.DRILL.cooldown)||45) - (G.now()-last)/1000); }
+function drillWindow(ci, n){ const c=G.S.chars[ci]; const nn=(n!=null)?n:((c&&c.drill&&c.drill.n)||0);
+  const duration=Math.max(0.65, 1.75 - nn*0.035); const width=Math.max(7, 22 - nn*0.4);
+  const maxLeft=Math.max(4, 96-width); const left=4+Math.random()*Math.max(0, maxLeft-4);
+  const slack=Math.max(6, 18-nn*0.3);
+  return {left, width, duration, slack, n:nn}; }
+function canDrill(ci){ const c=G.S.chars[ci]; if(!c || c.act!=='train' || G.S.loc!=='town') return false; const last=(c.drill&&c.drill.last)||0; return G.now()-last >= ((D.DRILL&&D.DRILL.cooldown)||45)*1000; }
+function drillWait(ci){ const c=G.S.chars[ci]; if(!c) return 0; const last=(c.drill&&c.drill.last)||0; return Math.max(0, ((D.DRILL&&D.DRILL.cooldown)||45) - (G.now()-last)/1000); }
 function applyDrill(ci, quality){ const c=G.S.chars[ci]; if(!c) return null; c.drill=Object.assign({xp:0,gold:0,n:0,last:0}, c.drill||{}); c.drill.last=G.now();
   if(quality==='miss') return {ok:false, drill:c.drill, pts:0};
   const pts=quality==='perfect'?((D.DRILL&&D.DRILL.perfect)||3):((D.DRILL&&D.DRILL.good)||1);
